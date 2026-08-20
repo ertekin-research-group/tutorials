@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>04 — Convergence Testing</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+<div class="nav"><a href="../">&larr; Tutorial index</a> &nbsp;|&nbsp;
+Prev: <a href="../03_vasp_inputs/">03_vasp_inputs</a> &nbsp;|&nbsp;
+Next: <a href="../05_si_relax/">05_si_relax</a></div>
+
+<h1>04 — Convergence Testing <span class="week">Week 4</span></h1>
+
+<p class="small">Establishing, and justifying, the numerical parameters that
+every calculation for the rest of the semester will use.</p>
+
+<div class="goal">
+<strong>Goal.</strong> Determine converged values of <code>ENCUT</code> and
+the k-point mesh for silicon, with plots as evidence, and understand why
+this has to happen before you relax anything.
+<br><br>
+This is the most important module in the series. Everything after it is
+technique; this is the habit.
+</div>
+
+<div class="why">
+<strong>The rule.</strong> Never report a number you have not converged, and
+always be able to say <em>how</em> you know it is converged. Not "I used
+520 eV because a paper did" — but "I used 450 eV because at 450 the energy
+per atom is within 1 meV of the value at 600, and here is the plot."
+<br><br>
+This is the difference between running software and doing computational
+science. A DFT calculation always produces a number. Whether that number
+means anything is entirely determined by work like this module.
+</div>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+  <li><a href="#what">What you are converging, and against what</a></li>
+  <li><a href="#setup">Setup</a></li>
+  <li><a href="#encut">Part A — the ENCUT sweep</a></li>
+  <li><a href="#kpoints">Part B — the k-mesh sweep</a></li>
+  <li><a href="#differences">Part C — differences converge faster</a></li>
+  <li><a href="#pulay">Part D — Pulay stress</a></li>
+  <li><a href="#deliverable">Deliverable</a></li>
+  <li><a href="#pitfalls">Pitfalls</a></li>
+</ol>
+</div>
+
+<h2 id="what">1. What you are converging, and against what</h2>
+
+<p>Recall the distinction from module 03: POSCAR and POTCAR describe the
+physical system; INCAR and KPOINTS describe the numerical approximation.
+Two numerical parameters dominate the accuracy of a plane-wave DFT
+calculation:</p>
+
+<table>
+<tr><th>Parameter</th><th>What it controls</th><th>Cost scaling</th></tr>
+<tr><td><code>ENCUT</code></td>
+    <td>How many plane waves are used to represent each wavefunction. Higher = a more complete basis set.</td>
+    <td>Roughly as ENCUT<sup>3/2</sup>.</td></tr>
+<tr><td>k-mesh</td>
+    <td>How finely the Brillouin zone is sampled when integrating over reciprocal space.</td>
+    <td>Roughly linear in the number of irreducible k-points.</td></tr>
+</table>
+
+<div class="warning">
+<strong>"Converged" always means "converged with respect to something,
+to within some tolerance."</strong> It is never an absolute property of a
+calculation. A cutoff converged to 1 meV/atom for total energy may be
+badly unconverged for a stress tensor or a phonon frequency. When you write
+down a converged value, write down the quantity and the tolerance too.
+</div>
+
+<h3>The tolerance we will use</h3>
+
+<p><strong>1 meV/atom</strong> for total energy. That is a reasonable
+default for the work we do: defect formation energies are typically
+0.5&ndash;5 eV, so 1 meV/atom of numerical noise is comfortably below
+anything we care about physically.</p>
+
+<h3>The reference problem</h3>
+
+<p>You cannot compare against the exact answer, because you do not have it.
+So you compare against the most converged calculation you can afford, and
+watch the differences shrink. This works, but has a trap:</p>
+
+<div class="warning">
+<strong>If only your largest value looks "converged", nothing is
+converged.</strong> Your reference deviates from itself by exactly zero, so
+it always looks perfect. The signal you want is a <em>plateau</em>: several
+consecutive values agreeing with each other. If the energy is still
+drifting in one direction at the top of your range, extend the range. The
+scripts here check for this and will tell you.
+</div>
+
+<h2 id="setup">2. Setup</h2>
+
+<p>Everything runs from this directory. You need a POTCAR — licensed, so not
+shipped with the tutorial:</p>
+
+<pre>cd tutorials/04_convergence
+conda activate defects
+cp ~/vasp_pseudo/Si/POTCAR POTCAR
+echo $VASP_STD           # must be set -- see module 02</pre>
+
+<p>Optionally set the core count (default 8):</p>
+
+<pre>export VASP_NP=8</pre>
+
+<h3>What is in this directory</h3>
+
+<table class="modtable">
+<tr><th>File</th><th>What it is</th></tr>
+<tr><td><a href="POSCAR">POSCAR</a></td><td>Silicon, 8-atom conventional cubic cell. <strong>Fixed</strong> — nothing relaxes in Parts A&ndash;C.</td></tr>
+<tr><td><a href="INCAR.template">INCAR.template</a></td><td>Static calculation, with <code>{ENCUT}</code> substituted by the script.</td></tr>
+<tr><td><a href="KPOINTS.template">KPOINTS.template</a></td><td>Uniform mesh, with <code>{NK}</code> substituted.</td></tr>
+<tr><td><a href="INCAR.relax.template">INCAR.relax.template</a></td><td>Cell relaxation, used only in Part D.</td></tr>
+<tr><td><a href="vasp_tools.py">vasp_tools.py</a></td><td>Shared helpers: run VASP, parse an OUTCAR, check convergence. Read this — it is short and it shows you exactly how an energy gets extracted.</td></tr>
+<tr><td><a href="sweep.py">sweep.py</a></td><td>Runs a sweep and writes a CSV.</td></tr>
+<tr><td><a href="plot_convergence.py">plot_convergence.py</a></td><td>Plots a sweep and reports the converged value.</td></tr>
+<tr><td><a href="pulay_demo.py">pulay_demo.py</a></td><td>Part D.</td></tr>
+</table>
+
+<div class="tip">
+<strong>Read <code>vasp_tools.py</code> before you run anything.</strong> It
+uses no external libraries deliberately — every step from "run a
+subprocess" to "regex the energy out of the OUTCAR" is visible. You wrote
+something similar by hand in Week 3; this is the tidied-up version. Later
+modules use pymatgen's parsers instead, and it is worth having seen the
+plumbing once before it disappears behind an API.
+</div>
+
+<h2 id="encut">3. Part A — the ENCUT sweep</h2>
+
+<p>First, find the floor. The POTCAR recommends a minimum:</p>
+
+<pre>grep ENMAX POTCAR</pre>
+
+<p>For silicon that is about 245 eV. That is a <em>floor</em>, not a
+converged value — a common misreading. Now sweep well past it:</p>
+
+<pre>python sweep.py encut</pre>
+
+<p>This runs eight static calculations at ENCUT = 250 to 600 eV, with the
+k-mesh fixed at a generous 9&times;9&times;9 so that k-point sampling is not
+what limits the result. Each run takes a few seconds to a minute.</p>
+
+<p>Then plot:</p>
+
+<pre>python plot_convergence.py encut</pre>
+
+<div class="tip">
+<strong>Look at the two panels and notice how different they are.</strong>
+The left panel — absolute energy per atom — looks essentially flat, because
+the total energy is around &minus;5.4 eV/atom and you are chasing changes of
+a few thousandths of that. The right panel plots the <em>deviation</em> on a
+log scale, and that is where convergence is actually visible. If you take
+one plotting lesson from this module: to see convergence, plot the
+difference, on a log axis.
+</div>
+
+<h3>What to conclude</h3>
+
+<ul>
+  <li>The smallest ENCUT within 1 meV/atom of the reference.</li>
+  <li>How much more the converged run costs than the cheapest one.</li>
+  <li>Whether the curve has genuinely plateaued, or is still sloping at
+      600 eV. If it is still sloping, rerun with
+      <code>--values 500 600 700 800</code>.</li>
+</ul>
+
+<div class="warning">
+<strong>Use the smallest converged value, not the largest one you
+tested.</strong> Over-converging is not "being careful" — it is spending
+two to three times the compute for no additional accuracy. You will run
+thousands of these calculations this semester, many of them on 96-atom
+defect supercells. A factor of two matters.
+</div>
+
+<h2 id="kpoints">4. Part B — the k-mesh sweep</h2>
+
+<p>Now hold ENCUT at your converged value and sweep the mesh:</p>
+
+<pre>python sweep.py kpoints --encut 450        # use YOUR value from Part A
+python plot_convergence.py kpoints</pre>
+
+<div class="why">
+<strong>Why sweep them one at a time rather than together?</strong> In
+principle the two parameters are coupled and you should converge them
+jointly on a 2D grid. In practice they are close enough to independent that
+sequential convergence works, and it costs eight calculations instead of
+sixty-four. The safeguard is to fix the <em>other</em> parameter at a
+generous value while you sweep — which is why Part A used a
+9&times;9&times;9 mesh. If you suspect coupling, spot-check: rerun one point
+from Part A at your final k-mesh and confirm the answer has not moved.
+</div>
+
+<div class="tip">
+<strong>k-point convergence depends on cell size, and inversely.</strong> A
+large real-space cell has a small Brillouin zone, which needs fewer
+k-points to sample. Your silicon result here will <em>not</em> transfer to a
+96-atom GaN supercell — that will need a much sparser mesh, and you will
+re-converge for it. What transfers is the method, not the number.
+</div>
+
+<h3>A useful way to report k-point density</h3>
+
+<p>Because the right mesh depends on the cell, "9&times;9&times;9" is not
+portable between systems. What is portable is the product of the mesh
+subdivision and the lattice vector length — often quoted as
+<em>k-point spacing</em> in &Aring;<sup>&minus;1</sup>, or as
+"<em>n</em>&nbsp;&times;&nbsp;<em>a</em>&nbsp;&asymp;&nbsp;30&nbsp;&Aring;".
+Compute this for your converged silicon mesh; it gives you a starting guess
+for GaN in Week 6 instead of starting from scratch.</p>
+
+<h2 id="differences">5. Part C — differences converge faster than absolutes</h2>
+
+<p>This is the most important conceptual point in the module, and it is
+what makes defect calculations tractable at all.</p>
+
+<p>Everything we care about physically is an energy <em>difference</em>: a
+formation energy, a defect formation energy, a reaction energy, a barrier.
+Absolute total energies are never reported and are not physically
+meaningful on their own. And it turns out differences converge much faster
+than the absolute energies they are built from, because the two
+calculations share most of the same convergence error, which cancels.</p>
+
+<h3>The experiment</h3>
+
+<p>Take two silicon cells at slightly different volumes — say a 1%
+compression — and compute the energy difference between them at each ENCUT
+in your Part A sweep. Then compare how fast that <em>difference</em>
+converges against how fast either absolute energy did.</p>
+
+<pre># build a compressed POSCAR
+python -c "
+from pymatgen.core import Structure
+s = Structure.from_file('POSCAR')
+s.scale_lattice(s.volume * 0.99)
+s.to(filename='POSCAR_compressed')
+print('wrote POSCAR_compressed, volume', s.volume)
+"</pre>
+
+<p>Then rerun the ENCUT sweep on the compressed cell (copy this directory,
+or swap the POSCAR), and plot the difference. You should find the difference
+converged at a noticeably lower cutoff than either absolute energy.</p>
+
+<div class="why">
+<strong>Why this matters enormously for us.</strong> A defect formation
+energy is the difference between a defect supercell and a perfect supercell
+of the same size. The basis-set error in each is large but nearly
+identical, so it largely cancels in the difference. This is why we can
+compute meaningful defect energies at cutoffs that would be far too low for
+absolute energies — and it is also why the two calculations in a difference
+must use <em>exactly</em> the same ENCUT, k-mesh, and POTCARs. Break that
+and you lose the cancellation, which is the entire reason the number is
+trustworthy.
+</div>
+
+<div class="warning">
+<strong>Consequence, worth internalizing now.</strong> Never compare
+energies from calculations with different <code>ENCUT</code>, different
+k-meshes, or different POTCAR variants. The comparison is meaningless — not
+slightly worse, meaningless. This will be a live hazard from Week 8 onward,
+when you start subtracting supercell energies from each other.
+</div>
+
+<h2 id="pulay">6. Part D — Pulay stress: why convergence precedes relaxation</h2>
+
+<p>Everything so far used a <em>fixed</em> structure. That was deliberate.
+Now you get to see what happens if you relax a cell with an unconverged
+cutoff:</p>
+
+<pre>python pulay_demo.py --low 250 --high 550</pre>
+
+<p>This relaxes the same silicon cell twice (<code>ISIF = 3</code>, so both
+ions and cell are free), changing only ENCUT, and compares the resulting
+lattice constants.</p>
+
+<h3>What you will see</h3>
+
+<p>The two runs give measurably different lattice constants. Both relaxed
+successfully. Neither reported an error.</p>
+
+<div class="why">
+<strong>Why.</strong> The stress tensor VASP computes is the derivative of
+the energy with respect to strain <em>at fixed basis set</em>. But the
+plane-wave basis is defined by an energy cutoff in reciprocal space — so
+when the cell changes volume, the set of plane waves fitting under that
+cutoff changes too. The computed stress therefore misses a term: the
+derivative with respect to the changing basis. That missing term is
+<strong>Pulay stress</strong>.
+<br><br>
+It shrinks as ENCUT grows, and it is essentially absent for fixed-cell
+calculations, where the basis never changes. Hence the ordering: converge on
+a fixed structure, then relax.
+</div>
+
+<div class="warning">
+<strong>This is the dangerous class of error.</strong> Not a crash, not a
+warning — a confident, converged, wrong answer. The low-ENCUT relaxation
+produces a lattice constant with a systematic bias and no indication
+anything is amiss. You cannot detect this from one calculation. The only
+defense is to have converged your parameters beforehand, which is why this
+module exists and why it is number 04 rather than number 06.
+</div>
+
+<h3>Two errors, distinguished</h3>
+
+<p>Your well-converged PBE lattice constant will still not match experiment
+exactly — it will land slightly above 5.431&nbsp;&Aring;. That residual is
+<em>physics</em>: a known systematic tendency of PBE, which no amount of
+convergence will remove.</p>
+
+<p>Learning to separate "my numerics are not converged" from "this
+functional has a known systematic error" is one of the genuinely useful
+skills in this field. The first is your fault and is fixable. The second is
+a property of the method, and the right response is to know its size and
+direction. You will meet this distinction again immediately, in module 05
+with the lattice constant and in module 06 with the band gap.</p>
+
+<h2 id="deliverable">7. Deliverable</h2>
+
+<p>Commit to your repository, under something like
+<code>convergence/silicon/</code>:</p>
+
+<ol>
+  <li><code>encut_results.csv</code> and <code>kpoints_results.csv</code>.</li>
+  <li>Both convergence figures.</li>
+  <li>The Part C comparison showing that a difference converges faster than
+      an absolute energy.</li>
+  <li>The Part D output, with the two lattice constants.</li>
+  <li><strong>A written statement of your converged parameters</strong>, of
+      roughly this form:
+      <div class="tip" style="margin-top:.6em">
+      <em>For silicon in the 8-atom conventional cell, total energy is
+      converged to within 1 meV/atom at <code>ENCUT</code> = ___ eV
+      (reference: ___ eV) and a ___&times;___&times;___ Gamma-centered mesh
+      (reference: ___). Evidence: <code>encut_convergence.png</code>,
+      <code>kpoints_convergence.png</code>. Energy differences between cells
+      of the same size converge by ___ eV. Cell relaxation at 250 eV gives a
+      lattice constant ___ &Aring; larger than at 550 eV, consistent with
+      Pulay stress.</em>
+      </div>
+  </li>
+</ol>
+
+<p>That statement goes into the methods section of your semester report.
+Every calculation you report from here on cites it.</p>
+
+<h2 id="pitfalls">8. Pitfalls</h2>
+
+<table>
+<tr><th>Pitfall</th><th>Why it is wrong</th></tr>
+<tr><td>Taking ENCUT from a paper on a different material</td>
+    <td>Converged ENCUT depends on the hardest POTCAR in your system. Oxygen and nitrogen need much more than silicon.</td></tr>
+<tr><td>Treating <code>ENMAX</code> as the converged value</td>
+    <td>It is a floor. Converged values are typically 1.3&ndash;2&times; higher.</td></tr>
+<tr><td>Converging on a relaxed structure</td>
+    <td>Circular: the relaxation depended on the parameters you are converging. Always converge at fixed geometry.</td></tr>
+<tr><td>Assuming silicon's k-mesh transfers to GaN</td>
+    <td>Different cell size, different lattice constants, different Brillouin zone. Re-converge.</td></tr>
+<tr><td>Declaring convergence from two points</td>
+    <td>You need a plateau. Two points cannot show one.</td></tr>
+<tr><td>Adopting the largest tested value because "only it converged"</td>
+    <td>Then nothing converged. Extend the range.</td></tr>
+<tr><td>Comparing energies across different ENCUT</td>
+    <td>Destroys the error cancellation that makes differences trustworthy.</td></tr>
+<tr><td>Converging total energy and assuming everything else is converged</td>
+    <td>Stresses, forces, and band gaps converge at different rates — usually slower.</td></tr>
+</table>
+
+<div class="check">
+<h3>Before moving on to module 05</h3>
+<ul>
+  <li>I have converged ENCUT and the k-mesh for silicon, with plots.</li>
+  <li>I chose the smallest converged value, not the largest tested.</li>
+  <li>I can explain why plotting the difference on a log axis is necessary.</li>
+  <li>I have shown that a difference converges faster than an absolute energy.</li>
+  <li>I have seen Pulay stress change a lattice constant, and can explain why.</li>
+  <li>I can distinguish an unconverged result from a functional's systematic error.</li>
+  <li>My converged parameters are written down, with evidence, in the repository.</li>
+</ul>
+</div>
+
+<div class="nav" style="margin-top:2.5em;border-top:1px solid #eee;border-bottom:none;padding-top:.8em">
+<a href="../">&larr; Tutorial index</a> &nbsp;|&nbsp;
+Prev: <a href="../03_vasp_inputs/">&larr; 03_vasp_inputs</a> &nbsp;|&nbsp;
+Next: <a href="../05_si_relax/">05_si_relax &rarr;</a></div>
+
+</body>
+</html>

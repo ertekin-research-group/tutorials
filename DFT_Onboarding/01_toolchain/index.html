@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>01 — Toolchain Setup</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+<div class="nav"><a href="../">&larr; Tutorial index</a> &nbsp;|&nbsp;
+Prev: <a href="../00_shell_basics/">00_shell_basics</a> &nbsp;|&nbsp;
+Next: <a href="../02_vasp_build_mac/">02_vasp_build_mac</a></div>
+
+<h1>01 — Toolchain Setup <span class="week">Week 1</span></h1>
+
+<p class="small">Getting from a fresh MacBook to a working scientific
+Python environment, with Git, the Materials Project, and the POTCAR library
+all wired up.</p>
+
+<div class="goal">
+<strong>Goal.</strong> By the end of this module,
+<code>python check_setup.py</code> passes every required check. That script
+is the definition of "done" — do not move to module 02 until it is green.
+</div>
+
+<div class="warning">
+<strong>Software policy: conda only. No Homebrew.</strong> Do not install
+Homebrew, MacPorts, or system-level scientific packages, and do not
+<code>pip install</code> anything that exists on conda-forge. This is not
+a stylistic preference. Two overlapping package managers produce library
+path and linking conflicts that are genuinely difficult to debug, and they
+make your environment impossible to reproduce on someone else's machine.
+One package manager, one environment file, one <code>conda activate</code>.
+<br><br>
+If you find instructions online that begin with <code>brew install</code>,
+they are not wrong in general — they are wrong <em>for us</em>. Ask before
+deviating.
+</div>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+  <li><a href="#miniforge">Install miniforge</a></li>
+  <li><a href="#env">Create the environment</a></li>
+  <li><a href="#vscode">VS Code</a></li>
+  <li><a href="#git">Git and GitHub</a></li>
+  <li><a href="#mp">Materials Project API key</a></li>
+  <li><a href="#potcar">The POTCAR library</a></li>
+  <li><a href="#verify">Verify everything</a></li>
+  <li><a href="#deliverable">Week 1 deliverable</a></li>
+</ol>
+</div>
+
+<h2 id="miniforge">1. Install miniforge</h2>
+
+<p><strong>miniforge</strong> is a minimal conda distribution that defaults
+to the conda-forge package repository. We use it rather than Anaconda
+(bloated, licensing complications) or plain Miniconda (defaults to a
+different channel).</p>
+
+<p>Download the Apple Silicon installer and run it:</p>
+
+<pre>cd ~/Downloads
+curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh"
+bash Miniforge3-MacOSX-arm64.sh</pre>
+
+<p>Accept the license, accept the default install location
+(<code>~/miniforge3</code>), and say <strong>yes</strong> when it offers to
+initialize your shell. Then close the terminal and open a new one.</p>
+
+<p>Check that it worked:</p>
+
+<pre>which conda          # should point inside ~/miniforge3
+conda --version</pre>
+
+<div class="tip">
+<strong>Apple Silicon, not Intel.</strong> Every Mac in this group is
+arm64. If you accidentally install the <code>x86_64</code> build,
+everything will still appear to work but will run through Rosetta
+translation at roughly half speed — and you will not notice until your DFT
+calculations are mysteriously slow. Confirm with <code>uname -m</code>,
+which should print <code>arm64</code>.
+</div>
+
+<h3>Turn off auto-activation of the base environment</h3>
+
+<pre>conda config --set auto_activate_base false</pre>
+
+<p>This keeps your default shell clean, so you have to deliberately
+activate the project environment. That is a feature: it means you always
+know which environment you are in.</p>
+
+<h2 id="env">2. Create the environment</h2>
+
+<p>The file <a href="environment.yml"><code>environment.yml</code></a> in
+this directory defines the environment. Read it before you run it — it is
+commented, and the comments explain what each group of packages is for.</p>
+
+<pre>conda env create -f environment.yml
+conda activate defects</pre>
+
+<p>This will take several minutes. conda has to solve the dependency graph
+and download a few hundred megabytes.</p>
+
+<div class="why">
+<strong>Why an environment file instead of installing packages one at a
+time?</strong> Because <code>environment.yml</code> is a <em>record</em>.
+It goes in Git, and it means that in six months — or on a new laptop, or
+for the next student — the same environment can be recreated exactly. A
+sequence of <code>conda install</code> commands you typed and forgot is not
+reproducible, and reproducibility is not an abstract virtue here: it is how
+you tell a real physical result from an artifact of your setup.
+</div>
+
+<p>Your prompt should now show <code>(defects)</code>. Confirm you are
+running the right Python:</p>
+
+<pre>which python         # should be inside ~/miniforge3/envs/defects
+python --version     # 3.12.x</pre>
+
+<div class="warning">
+<strong>You must <code>conda activate defects</code> in every new
+terminal.</strong> This is the single most common source of "it worked
+yesterday" confusion. If a package suddenly is not found, check
+<code>which python</code> first — the answer is almost always that you are
+in the base environment. Later, once VASP is built against this
+environment's MPI libraries, you will need it activated to <em>run
+calculations</em> too, not just to run Python.
+</div>
+
+<h2 id="vscode">3. VS Code</h2>
+
+<p>Download VS&nbsp;Code from
+<a href="https://code.visualstudio.com/">code.visualstudio.com</a> (the
+Apple Silicon build), and install these extensions from the Extensions
+panel (<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd>):</p>
+
+<ul>
+  <li><strong>Python</strong> (Microsoft)</li>
+  <li><strong>Jupyter</strong> (Microsoft)</li>
+  <li><strong>Claude Code</strong> (Anthropic)</li>
+</ul>
+
+<p>Then tell VS&nbsp;Code to use your conda environment:
+<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> &rarr;
+<em>Python: Select Interpreter</em> &rarr; choose the one whose path
+contains <code>envs/defects</code>.</p>
+
+<div class="tip">
+The integrated terminal (<kbd>Ctrl</kbd>+<kbd>`</kbd>) is where you will
+live. It picks up the selected interpreter automatically, which is one
+fewer thing to forget.
+</div>
+
+<h2 id="git">4. Git and GitHub</h2>
+
+<h3>Tell Git who you are</h3>
+
+<pre>git config --global user.name "Your Name"
+git config --global user.email "your_netid@illinois.edu"
+git config --global init.defaultBranch main
+git config --global pull.rebase true</pre>
+
+<h3>Create a GitHub account and get added to the organization</h3>
+
+<ol>
+  <li>Create an account at <a href="https://github.com">github.com</a> if
+      you do not have one. Use a professional username — it will appear on
+      your published work.</li>
+  <li><strong>Send Elif your username</strong> so she can add you to the
+      group organization.</li>
+  <li>Once you are a member, <strong>create your project repository
+      <em>inside the organization</em></strong>, not under your personal
+      account. This matters: repositories in the organization are owned by
+      the group, survive your graduation, and are visible to the people who
+      need to help you.</li>
+</ol>
+
+<h3>Set up an SSH key</h3>
+
+<p>This lets you push to GitHub without typing a password every time:</p>
+
+<pre>ssh-keygen -t ed25519 -C "your_netid@illinois.edu"
+# accept the default location; setting a passphrase is optional
+cat ~/.ssh/id_ed25519.pub</pre>
+
+<p>Copy the output, then on GitHub go to <em>Settings &rarr; SSH and GPG
+keys &rarr; New SSH key</em> and paste it. Test:</p>
+
+<pre>ssh -T git@github.com</pre>
+
+<h3>Clone your repository</h3>
+
+<pre>mkdir -p ~/research
+cd ~/research
+git clone git@github.com:ORGNAME/REPONAME.git
+cd REPONAME</pre>
+
+<p>Copy <code>environment.yml</code> into the repository and make your
+first commit:</p>
+
+<pre>cp ~/path/to/tutorials/01_toolchain/environment.yml .
+git add environment.yml
+git commit -m "Add conda environment specification"
+git push</pre>
+
+<div class="tip">
+<strong>Commit daily, even when the work is messy.</strong> Git is a safety
+net, not a polished archive. A commit that says "broken, saving progress"
+is far more useful than no commit. The one thing to keep out of Git is
+large binary output — <code>WAVECAR</code>, <code>CHGCAR</code>, and
+<code>vasprun.xml</code> files can be hundreds of megabytes. We will set up
+a <code>.gitignore</code> for those in module 03.
+</div>
+
+<h2 id="mp">5. Materials Project API key</h2>
+
+<p>The <a href="https://materialsproject.org">Materials Project</a> is a
+public database of computed materials properties. We use it for two things:
+getting starting crystal structures, and later (Week 11) finding the
+competing phases that set chemical potential limits.</p>
+
+<ol>
+  <li>Register at <a href="https://materialsproject.org">materialsproject.org</a>
+      — free, use your Illinois email.</li>
+  <li>Go to your dashboard and copy your <strong>API key</strong>.</li>
+  <li>Store it. Add this line to <code>~/.zshrc</code>:
+      <pre>export MP_API_KEY="your_key_here"</pre>
+      then <code>source ~/.zshrc</code>.</li>
+  <li>Also register it with pymatgen, which looks for its own setting name:
+      <pre>pmg config --add PMG_MAPI_KEY "your_key_here"</pre>
+      This writes to <code>~/.config/.pmgrc.yaml</code>.</li>
+</ol>
+
+<div class="why">
+<strong>Why two names for the same key?</strong> The Materials Project
+replaced its original API with a new one, and the two client libraries look
+for differently-named settings — <code>PMG_MAPI_KEY</code> for pymatgen's
+legacy interface, <code>MP_API_KEY</code> for the newer
+<code>mp-api</code> client. Setting both costs nothing and saves a
+confusing afternoon later, when a tool you did not write goes looking for
+the one you did not set.
+</div>
+
+<div class="warning">
+<strong>Never commit your API key to Git.</strong> It is tied to your
+account. Keeping it in <code>~/.zshrc</code> — outside any repository — is
+the whole point. If you ever paste a key into a script, stop and move it to
+an environment variable before committing.
+</div>
+
+<h2 id="potcar">6. The POTCAR library</h2>
+
+<p>POTCAR files are the VASP pseudopotentials: one per element, describing
+how the core electrons are replaced by an effective potential. They are
+<strong>licensed</strong> — they come with the VASP license and cannot be
+redistributed publicly.</p>
+
+<p><strong>Get the library from Elif.</strong> Put it somewhere permanent
+and outside any Git repository, for example <code>~/vasp_pseudo/</code>.</p>
+
+<h3>Two ways you will use POTCARs</h3>
+
+<p><strong>By hand.</strong> A POTCAR is just the per-element files
+concatenated in POSCAR order:</p>
+
+<pre>cp ~/vasp_pseudo/Si/POTCAR POTCAR                      # one element
+cat ~/vasp_pseudo/Ga/POTCAR ~/vasp_pseudo/N/POTCAR &gt; POTCAR   # two, IN ORDER</pre>
+
+<p><strong>Through pymatgen.</strong> pymatgen can generate POTCARs
+automatically, but it expects the library in a specific directory layout
+(with names like <code>POT_GGA_PAW_PBE_54/</code>), which is <em>not</em>
+the same as the flat <code>&lt;element&gt;/POTCAR</code> layout above. To
+build the layout pymatgen wants:</p>
+
+<pre>pmg config -p ~/vasp_pseudo ~/vasp_psp_pmg
+pmg config --add PMG_VASP_PSP_DIR ~/vasp_psp_pmg
+export PMG_VASP_PSP_DIR=~/vasp_psp_pmg     # also add this line to ~/.zshrc</pre>
+
+<div class="tip">
+This step is fiddly and depends on exactly how the library you were given
+is organized. If <code>pmg config -p</code> complains, that is normal —
+bring the error message to the meeting, or work through it with Claude. It
+is a directory-shuffling problem, not a physics problem, and it is not
+worth an hour of solo struggle.
+</div>
+
+<h3>Confirm it works</h3>
+
+<pre>python -c "from pymatgen.io.vasp.inputs import Potcar; \
+p = Potcar(['Si'], functional='PBE_54'); print(p[0].keywords['ENMAX'])"</pre>
+
+<p>You should get a number around 245 eV. That is silicon's recommended
+minimum plane-wave cutoff, and you will meet it again in module 04.</p>
+
+<div class="warning">
+<strong>POTCAR order must match POSCAR order. Always.</strong> If your
+POSCAR lists <code>Ga N</code>, your POTCAR must contain gallium first,
+then nitrogen. Get this backwards and VASP will run happily to completion
+and give you a completely meaningless answer, with no error message. This
+is the single most expensive silent mistake in VASP, and it is worth
+developing a reflex of checking:
+<pre>head -1 POTCAR
+grep -c "End of Dataset" POTCAR    # how many elements are in there</pre>
+</div>
+
+<h2 id="verify">7. Verify everything</h2>
+
+<p>Run the check script in this directory:</p>
+
+<pre>conda activate defects
+python check_setup.py</pre>
+
+<p>It tests each piece independently and keeps going after a failure, so one
+run tells you everything that is wrong rather than one thing at a time.</p>
+
+<p>The last two checks — MPI and <code>gfortran</code> — are allowed to
+report <code>warn</code> at this stage. Those belong to module 02. Every
+other check must say <code>ok</code>.</p>
+
+<div class="done">
+<strong>What "done" looks like:</strong>
+<pre>[  ok ] Python / conda environment                Python 3.12.x in env 'defects'
+[  ok ] Core packages (numpy, scipy, ...)         numpy 2.x, scipy 1.x, matplotlib 3.x
+[  ok ] ASE                                      ase 3.x; built Si cell with 2 atoms
+[  ok ] pymatgen                                 pymatgen 2025.x; built Si with 8 sites
+[  ok ] Symmetry detection (spglib)              space group correctly identified as Fd-3m
+[  ok ] POTCAR directory configured              /Users/you/vasp_psp_pmg
+[  ok ] POTCAR generation via pymatgen           generated Si POTCAR, ENMAX = 245.345 eV
+[  ok ] Materials Project API key present        key found (32 characters, starts 'abcd...')
+[  ok ] Materials Project query works            queried mp-149 -&gt; Si
+[  ok ] Git configured                           Your Name &lt;netid@illinois.edu&gt;</pre>
+</div>
+
+<h2 id="deliverable">8. Week 1 deliverable</h2>
+
+<p>Commit to your repository:</p>
+
+<ul>
+  <li><code>environment.yml</code></li>
+  <li>A Jupyter notebook that imports ASE and pymatgen, builds a silicon
+      structure with each, and prints the space group. Three cells is
+      plenty — the point is to demonstrate the toolchain works, not to do
+      science.</li>
+  <li>A short <code>notes.md</code> recording anything in this module that
+      did not work as written, and what you did instead. <strong>This is
+      not optional.</strong> These instructions were written before anyone
+      followed them on your specific machine, and the corrections you find
+      are how they get better for the next person.</li>
+</ul>
+
+<p>Also confirm with Elif that your cluster account is active. You will not
+use it until Week 12, but there is no reason to discover a problem then.</p>
+
+<div class="check">
+<h3>Before moving on to module 02</h3>
+<ul>
+  <li><code>check_setup.py</code> passes every required check.</li>
+  <li>I can activate the environment and know how to tell whether I am in it.</li>
+  <li>My repository is inside the group organization and I have pushed to it.</li>
+  <li>I have the POTCAR library, and I know why POTCAR order matters.</li>
+  <li>I have the VASP source downloaded and ready for the module 02 session.</li>
+</ul>
+</div>
+
+<div class="nav" style="margin-top:2.5em;border-top:1px solid #eee;border-bottom:none;padding-top:.8em">
+<a href="../">&larr; Tutorial index</a> &nbsp;|&nbsp;
+Prev: <a href="../00_shell_basics/">&larr; 00_shell_basics</a> &nbsp;|&nbsp;
+Next: <a href="../02_vasp_build_mac/">02_vasp_build_mac &rarr;</a></div>
+
+</body>
+</html>

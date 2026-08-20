@@ -1,0 +1,41 @@
+# Si bulk relaxation (cell + ions)
+#
+# ENCUT and the KPOINTS mesh below are PLACEHOLDERS. Replace them with the
+# converged values you determined in module 04, and note in your commit
+# message where they came from. If you have not done module 04 yet, stop
+# and go do it -- relaxing a cell with an unconverged cutoff gives a
+# confidently wrong lattice constant (see 04, Part D).
+SYSTEM = Si relax
+
+# --- accuracy ---
+PREC   = Accurate
+ENCUT  = 450            # <-- YOUR converged value from module 04
+LREAL  = .FALSE.
+LASPH  = .TRUE.
+
+# --- electronic ---
+EDIFF  = 1E-6
+NELM   = 80
+NELMIN = 4              # minimum SCF steps per ionic step; guards against
+                        # a lazily "converged" first step after atoms move
+ALGO   = Normal
+ISPIN  = 1              # silicon is non-magnetic
+
+# --- smearing (semiconductor) ---
+ISMEAR = 0
+SIGMA  = 0.05
+
+# --- ionic relaxation ---
+NSW    = 100            # max ionic steps
+IBRION = 2              # conjugate gradient
+ISIF   = 3              # relax ions AND cell (shape + volume)
+EDIFFG = -0.01          # negative = force criterion, eV/Angstrom
+ISYM   = 2              # use symmetry (faster; fine for a perfect crystal)
+
+# --- parallel ---
+KPAR   = 2
+NCORE  = 2
+
+# --- I/O ---
+LWAVE  = .FALSE.
+LCHARG = .FALSE.

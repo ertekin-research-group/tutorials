@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>00 — Shell Basics (macOS)</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+<div class="nav"><a href="../">&larr; Tutorial index</a> &nbsp;|&nbsp;
+Next: <a href="../01_toolchain/">01_toolchain</a></div>
+
+<h1>00 — Shell Basics <span class="week">Week 1</span></h1>
+
+<p class="small">The command-line vocabulary that every other module
+assumes. Written for macOS (zsh). Everything here works on your laptop —
+nothing in this module needs a cluster.</p>
+
+<div class="goal">
+<strong>Goal.</strong> Be able to move around the filesystem, inspect files,
+search inside them, edit them, and understand what <code>PATH</code> is,
+without reaching for the Finder. You do not need to be fast. You need to
+stop being lost.
+</div>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+  <li><a href="#terminal">Opening a terminal</a></li>
+  <li><a href="#nav">Where am I? Navigation</a></li>
+  <li><a href="#view">Looking at files</a></li>
+  <li><a href="#manip">Creating, copying, moving, deleting</a></li>
+  <li><a href="#search">Searching for files and text</a></li>
+  <li><a href="#edit">Editing files in the terminal</a></li>
+  <li><a href="#pipes">Redirection and pipes</a></li>
+  <li><a href="#env">Environment variables and PATH</a></li>
+  <li><a href="#perm">Permissions and executables</a></li>
+  <li><a href="#habits">Habits worth building now</a></li>
+  <li><a href="#exercises">Exercises</a></li>
+</ol>
+</div>
+
+<h2 id="terminal">1. Opening a terminal</h2>
+
+<p>Press <kbd>Cmd</kbd>+<kbd>Space</kbd>, type <code>Terminal</code>, hit
+return. You will get a window with a prompt that ends in <code>%</code>.
+That is <em>zsh</em>, the default macOS shell.</p>
+
+<p>You will mostly use the terminal built into VS&nbsp;Code instead
+(<kbd>Ctrl</kbd>+<kbd>`</kbd>), which is the same thing in a more convenient
+place. Either is fine.</p>
+
+<table>
+<tr><th>Shortcut</th><th>What it does</th></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>C</kbd></td><td>Kill whatever is currently running. Your escape hatch.</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>A</kbd> / <kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>Jump to start / end of the line.</td></tr>
+<tr><td><kbd>Cmd</kbd>+<kbd>K</kbd></td><td>Clear the screen (Terminal.app).</td></tr>
+<tr><td><kbd>Tab</kbd></td><td><strong>Autocomplete.</strong> Use this constantly — it prevents typos in long paths.</td></tr>
+<tr><td><kbd>&uarr;</kbd> / <kbd>&darr;</kbd></td><td>Scroll back through commands you already ran.</td></tr>
+</table>
+
+<div class="tip">
+<strong>Tab-completion is not optional.</strong> Type the first few letters
+of a directory name and press <kbd>Tab</kbd>. If you are typing full paths
+by hand you are working much harder than necessary and introducing typos
+that produce confusing errors later.
+</div>
+
+<h2 id="nav">2. Where am I? Navigation</h2>
+
+<pre>pwd                     # print working directory -- "where am I?"
+ls                      # list files here
+cd ~/Desktop            # change directory (~ means your home folder)
+cd ..                   # go up one level
+cd -                    # jump back to where you just were
+cd                      # with no argument: go home</pre>
+
+<table>
+<tr><th>Command</th><th>What it does</th></tr>
+<tr><td><code>ls</code></td><td>List visible files.</td></tr>
+<tr><td><code>ls -l</code></td><td>Long form: permissions, size, date.</td></tr>
+<tr><td><code>ls -la</code></td><td>Include hidden files (those starting with <code>.</code>).</td></tr>
+<tr><td><code>ls -lh</code></td><td>Human-readable sizes (1.2K, 3.4M).</td></tr>
+<tr><td><code>ls -lt</code></td><td>Sort by time, newest first. Very useful for "what did my run just write?"</td></tr>
+</table>
+
+<h3>Paths</h3>
+
+<p>An <strong>absolute</strong> path starts from the root:
+<code>/Users/you/research/si</code>. A <strong>relative</strong> path
+starts from wherever you are: <code>si/relax</code>, or <code>../bulk</code>.
+Both are fine; absolute paths are safer in scripts, relative paths are
+faster to type.</p>
+
+<div class="warning">
+<strong>Never put spaces in directory names for calculations.</strong>
+macOS lets you do it, and the Finder encourages it, but
+<code>my si run/</code> will break scripts in ways that are annoying to
+debug. Use <code>my_si_run/</code> or <code>si-run/</code>. Same for
+<code>&amp;</code>, <code>(</code>, <code>)</code>, and <code>#</code>.
+</div>
+
+<div class="tip">
+You can drag a folder from the Finder into a terminal window and it will
+paste the full path. Handy when you are not sure where something lives.
+</div>
+
+<h2 id="view">3. Looking at files</h2>
+
+<pre>cat INCAR               # dump the whole file (small files only)
+less OUTCAR             # page through a big file: q to quit, / to search
+head INCAR              # first 10 lines
+head -n 30 INCAR        # first 30 lines
+tail OSZICAR            # last 10 lines
+tail -f OSZICAR         # FOLLOW a file as it grows -- watch a run live
+wc -l OUTCAR            # count lines
+du -sh *                # how big is everything here?</pre>
+
+<div class="tip">
+<code>tail -f OSZICAR</code> is how you watch a VASP calculation converge in
+real time. <kbd>Ctrl</kbd>+<kbd>C</kbd> to stop watching (this does
+<em>not</em> stop the calculation).
+</div>
+
+<div class="warning">
+Never <code>cat</code> an <code>OUTCAR</code> or a <code>WAVECAR</code>.
+OUTCARs are tens of thousands of lines and WAVECARs are binary — you will
+flood your terminal with garbage. Use <code>less</code>,
+<code>head</code>, <code>tail</code>, or <code>grep</code>.
+</div>
+
+<h2 id="manip">4. Creating, copying, moving, deleting</h2>
+
+<pre>mkdir si_relax          # create a directory
+mkdir -p a/b/c          # create nested directories in one go
+touch notes.txt         # create an empty file
+cp INCAR INCAR.bak      # copy a file
+cp -r run1/ run2/       # copy a directory and everything in it
+mv old.txt new.txt      # rename
+mv notes.txt ../        # move
+rm notes.txt            # delete a file
+rm -r oldrun/           # delete a directory and its contents
+rmdir empty_dir/        # delete a directory only if it is empty (safer)</pre>
+
+<div class="warning">
+<strong><code>rm</code> is permanent.</strong> There is no Trash and no
+undo. Be especially careful with wildcards: <code>rm -rf *</code> in the
+wrong directory will ruin your afternoon. Two habits that prevent this:
+run <code>pwd</code> before any <code>rm -r</code>, and run
+<code>ls</code> on a wildcard before you <code>rm</code> it — if
+<code>ls *.out</code> lists what you expect, then <code>rm *.out</code> is
+safe.
+</div>
+
+<div class="tip">
+<strong>Copy the closest thing you already have.</strong> When you need a
+new calculation, <code>cp -r</code> a working directory and edit what
+differs. Do not build inputs from scratch each time — you will forget a tag.
+</div>
+
+<h2 id="search">5. Searching for files and text</h2>
+
+<h3>Finding files</h3>
+<pre>find . -name "POSCAR"           # by exact name, recursively from here
+find . -name "*.py"             # by pattern
+find . -type d -name "relax*"   # directories only
+find . -name OUTCAR -mtime -1   # modified in the last day</pre>
+
+<h3>Searching inside files</h3>
+<pre>grep "TOTEN" OUTCAR             # lines containing TOTEN
+grep -i "error" *.out           # case-insensitive, across several files
+grep -n "ENCUT" INCAR           # show line numbers
+grep -r "ISMEAR" .              # recursively through everything below here
+grep -c "TOTEN" OUTCAR          # just count the matches</pre>
+
+<p>These two combine into the single most useful command you will learn this
+week:</p>
+
+<pre>grep "free  energy   TOTEN" OUTCAR | tail -1</pre>
+
+<p>That pulls the final total energy out of a VASP run. Note the double
+spaces — VASP's output formatting is fixed-width, so the spacing matters.
+You will use this constantly, and in module 04 you will automate it.</p>
+
+<div class="tip">
+Combine <code>grep</code> across many runs at once:
+<pre>grep "free  energy   TOTEN" */OUTCAR | tail -20</pre>
+This is how you compare a whole sweep of calculations in one line — exactly
+what you will want in module 04.
+</div>
+
+<h2 id="edit">6. Editing files in the terminal</h2>
+
+<p>Most of the time you will edit files in VS&nbsp;Code, which is easier.
+But you need <em>some</em> terminal editor for when you are working over
+SSH (module 07).</p>
+
+<h3><code>nano</code> — easy, start here</h3>
+<pre>nano INCAR</pre>
+<p>Type normally. The bottom bar shows the shortcuts, where <code>^</code>
+means <kbd>Ctrl</kbd>: <code>^O</code> to save, <code>^X</code> to exit.</p>
+
+<h3><code>vim</code> — the minimum to survive</h3>
+<p>You will eventually open a file in <code>vim</code> by accident, or land
+on a machine without <code>nano</code>. Learn just enough to get out:</p>
+<table>
+<tr><th>Keys</th><th>Effect</th></tr>
+<tr><td><kbd>i</kbd></td><td>Start typing (insert mode).</td></tr>
+<tr><td><kbd>Esc</kbd></td><td>Stop typing (back to normal mode).</td></tr>
+<tr><td><code>:w</code></td><td>Save.</td></tr>
+<tr><td><code>:wq</code></td><td>Save and quit.</td></tr>
+<tr><td><code>:q!</code></td><td>Quit, throwing away changes. <strong>The escape hatch.</strong></td></tr>
+<tr><td><kbd>/</kbd>text</td><td>Search forward; <kbd>n</kbd> for next match.</td></tr>
+<tr><td><kbd>u</kbd></td><td>Undo.</td></tr>
+</table>
+
+<h2 id="pipes">7. Redirection and pipes</h2>
+
+<pre>command &gt; out.txt        # send output to a file (OVERWRITES it)
+command &gt;&gt; out.txt       # append instead
+command 2&gt; err.txt       # send error messages to a file
+command &gt; all.txt 2&gt;&amp;1   # send both output and errors to one file
+command1 | command2      # pipe: feed command1's output into command2</pre>
+
+<p>Pipes are what make the shell powerful. Each command is small; you chain
+them:</p>
+
+<pre>grep "TOTEN" OUTCAR | tail -1 | awk '{print $5}'</pre>
+
+<p>Find the energy lines, take the last one, print the fifth field. You do
+not need to master <code>awk</code> — just recognize that this is how small
+tools combine into a specific answer.</p>
+
+<h2 id="env">8. Environment variables and PATH</h2>
+
+<pre>echo $HOME              # print one variable
+echo $PATH              # the list of directories searched for commands
+which python            # WHICH python am I actually running?
+export MYVAR=hello      # set a variable for this shell session only
+env | grep -i conda     # list variables mentioning conda</pre>
+
+<div class="why">
+<strong>Why <code>PATH</code> matters to you.</strong> When you type
+<code>python</code>, the shell searches the directories in
+<code>PATH</code>, in order, and runs the first match. This is why
+<code>which python</code> is the first thing to check when a package
+"isn't installed" — usually it <em>is</em> installed, but in a different
+Python than the one you are running. You will hit this. Expect it.
+</div>
+
+<h3>Making a setting permanent</h3>
+
+<p>Variables set with <code>export</code> vanish when you close the
+terminal. To make one persist, put it in <code>~/.zshrc</code>, which zsh
+reads every time it starts:</p>
+
+<pre>nano ~/.zshrc                    # add your line, save, exit
+source ~/.zshrc                  # re-read it in the current shell</pre>
+
+<div class="warning">
+Keep <code>~/.zshrc</code> tidy and understand every line in it. A
+mysterious <code>export</code> you added six months ago and forgot is a
+genuinely nasty source of "it works on my machine" problems. When you add
+something, add a comment saying why.
+</div>
+
+<h2 id="perm">9. Permissions and executables</h2>
+
+<p><code>ls -l</code> shows something like:</p>
+
+<pre>-rwxr-xr-x  1 alex  staff  55861656 Aug 27 21:40 vasp_std
+ ^^^ ^^^ ^^^
+ ||| ||| `--- everyone else (r=read, w=write, x=execute)
+ ||| `------- your group
+ `----------- you (the owner)</pre>
+
+<table>
+<tr><th>Command</th><th>Effect</th></tr>
+<tr><td><code>chmod +x script.sh</code></td><td>Make a file executable. Needed for scripts and binaries.</td></tr>
+<tr><td><code>chmod 644 file</code></td><td>Owner read/write; everyone else read-only.</td></tr>
+<tr><td><code>chmod 700 dir</code></td><td>Only you can read, write, or enter it.</td></tr>
+</table>
+
+<div class="tip">
+If you get <code>permission denied</code> trying to run something you just
+wrote, you almost certainly need <code>chmod +x</code> on it. Your
+<code>vasp_std</code> binary will need this too.
+</div>
+
+<h2 id="habits">10. Habits worth building now</h2>
+
+<ul>
+  <li><strong><code>pwd</code> before anything destructive.</strong> Cheap
+      insurance.</li>
+  <li><strong>One directory per calculation.</strong> Never run two
+      calculations in the same folder — VASP writes fixed filenames and
+      they will overwrite each other silently.</li>
+  <li><strong>Name directories so they sort correctly.</strong>
+      <code>encut_300</code>, <code>encut_350</code>, <code>encut_400</code>
+      — and use <code>encut_0300</code> style zero-padding if you will go
+      into four digits, so <code>ls</code> orders them sensibly.</li>
+  <li><strong>Keep a <code>README</code> or <code>notes.md</code> in every
+      project directory.</strong> Write what you were trying to do. In three
+      weeks you will not remember, and a directory called
+      <code>test3_new_v2</code> tells you nothing.</li>
+  <li><strong>Never edit files only on a remote machine.</strong> Everything
+      important lives in Git (module 01).</li>
+</ul>
+
+<h2 id="exercises">11. Exercises</h2>
+
+<p>Do these before the Week 1 meeting. They take about thirty minutes and
+they are the difference between having read this and being able to use it.</p>
+
+<ol>
+  <li>Make a directory <code>~/research/practice</code> and
+      <code>cd</code> into it. Confirm with <code>pwd</code>.</li>
+  <li>Create three files named <code>run_01.txt</code> through
+      <code>run_03.txt</code> with <code>touch</code>. List them sorted by
+      time.</li>
+  <li>Put the text <code>ENCUT = 400</code> into <code>run_01.txt</code>
+      using redirection (not an editor).</li>
+  <li>Use <code>grep</code> to find which of the three files contains the
+      word <code>ENCUT</code>.</li>
+  <li>Copy <code>run_01.txt</code> to <code>run_04.txt</code>, then edit
+      <code>run_04.txt</code> in <code>nano</code> to say
+      <code>ENCUT = 500</code>.</li>
+  <li>Run <code>grep -r "ENCUT" .</code> from the parent directory and
+      make sure you understand every line of the output.</li>
+  <li>Run <code>which python</code> and <code>echo $PATH</code>. Be ready
+      to explain in the meeting what the relationship between those two
+      outputs is.</li>
+  <li>Delete the practice directory entirely — carefully, and after running
+      <code>pwd</code>.</li>
+</ol>
+
+<div class="check">
+<h3>Before moving on to module 01</h3>
+<ul>
+  <li>I can get to any directory on my laptop without using the Finder.</li>
+  <li>I know how to look at the last 20 lines of a large file.</li>
+  <li>I can search for a string inside every file in a directory tree.</li>
+  <li>I understand what <code>PATH</code> is and why <code>which</code> matters.</li>
+  <li>I know how to make a script executable.</li>
+  <li>I have used <kbd>Tab</kbd> completion enough that it is becoming automatic.</li>
+</ul>
+</div>
+
+<div class="nav" style="margin-top:2.5em;border-top:1px solid #eee;border-bottom:none;padding-top:.8em">
+<a href="../">&larr; Tutorial index</a> &nbsp;|&nbsp;
+Next: <a href="../01_toolchain/">01_toolchain &rarr;</a></div>
+
+</body>
+</html>

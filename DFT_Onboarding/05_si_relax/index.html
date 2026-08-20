@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>05 — Relaxing Silicon</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+<div class="nav"><a href="../">&larr; Tutorial index</a> &nbsp;|&nbsp;
+Prev: <a href="../04_convergence/">04_convergence</a> &nbsp;|&nbsp;
+Next: <a href="../06_si_bands/">06_si_bands</a></div>
+
+<h1>05 — Relaxing Silicon <span class="week">Week 5</span></h1>
+
+<p class="small">Your first real prediction: the equilibrium lattice
+constant of silicon, computed from scratch and compared to experiment.</p>
+
+<div class="goal">
+<strong>Goal.</strong> Relax the silicon cell using your converged
+parameters from module 04, and interpret the remaining error correctly —
+separating what is numerics from what is the functional.
+</div>
+
+<div class="warning">
+<strong>Do module 04 first.</strong> The <code>INCAR</code> here ships with
+<code>ENCUT = 450</code> as a placeholder. Replace it with the value
+<em>you</em> converged. Relaxing a cell with an unconverged cutoff produces a
+lattice constant that is wrong through Pulay stress, and nothing in the
+output will warn you.
+</div>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+  <li><a href="#what">What relaxation means</a></li>
+  <li><a href="#incar">The INCAR, tag by tag</a></li>
+  <li><a href="#run">Running it</a></li>
+  <li><a href="#watch">Watching it converge</a></li>
+  <li><a href="#analyze">Analyzing the result</a></li>
+  <li><a href="#error">Interpreting the error</a></li>
+  <li><a href="#deliverable">Deliverable</a></li>
+</ol>
+</div>
+
+<h2 id="what">1. What relaxation means</h2>
+
+<p>Up to now every calculation has been <em>static</em>: fixed atoms, fixed
+cell, one self-consistent solution of the electronic problem. Relaxation
+adds an outer loop. VASP computes the forces on each atom and the stress on
+the cell, moves things downhill, and solves the electronic problem again.
+It repeats until the forces fall below your threshold.</p>
+
+<p>So there are two nested convergence criteria, and they are easy to
+confuse:</p>
+
+<table>
+<tr><th>Loop</th><th>Criterion</th><th>Tag</th><th>Typical value</th></tr>
+<tr><td>Inner (electronic)</td><td>Energy change between SCF steps</td>
+    <td><code>EDIFF</code></td><td><code>1E-6</code> eV</td></tr>
+<tr><td>Outer (ionic)</td><td>Largest force on any atom</td>
+    <td><code>EDIFFG</code></td><td><code>-0.01</code> eV/&Aring;</td></tr>
+</table>
+
+<div class="tip">
+<strong>The inner criterion must be tighter than the outer one.</strong>
+Forces are derivatives of the energy, so noise in the energy becomes larger
+noise in the force. If <code>EDIFF</code> is loose, the forces are garbage
+and the relaxation wanders. The rule of thumb is <code>EDIFF</code> at least
+two orders of magnitude tighter than the energy scale implied by your force
+criterion.
+</div>
+
+<h2 id="incar">2. The INCAR, tag by tag</h2>
+
+<p>The relaxation-specific tags in <a href="INCAR"><code>INCAR</code></a>:</p>
+
+<table>
+<tr><th>Tag</th><th>Value</th><th>Why</th></tr>
+<tr><td><code>NSW</code></td><td>100</td>
+    <td>Maximum ionic steps. If you hit this, the relaxation did not finish — it did not fail loudly, it just stopped.</td></tr>
+<tr><td><code>IBRION</code></td><td>2</td>
+    <td>Conjugate gradient. Robust and a good default. (<code>IBRION = 1</code>, quasi-Newton, is faster once you are already near the minimum.)</td></tr>
+<tr><td><code>ISIF</code></td><td>3</td>
+    <td><strong>The important one.</strong> 2 relaxes only the ions inside a fixed cell; 3 also relaxes the cell shape and volume. We want 3, because the lattice constant is the thing we are predicting.</td></tr>
+<tr><td><code>EDIFFG</code></td><td>&minus;0.01</td>
+    <td>Negative means "force criterion in eV/&Aring;". Positive would mean an energy criterion, which is a weaker condition and not what you want.</td></tr>
+<tr><td><code>NELMIN</code></td><td>4</td>
+    <td>Minimum SCF steps per ionic step. After atoms move, the first SCF step can look deceptively converged; this forces it to actually re-solve.</td></tr>
+<tr><td><code>ISYM</code></td><td>2</td>
+    <td>Use symmetry to save time. Safe for a perfect crystal. <strong>You will turn this off for defects</strong> — a defect breaks the symmetry, and keeping <code>ISYM</code> on can prevent the atoms from relaxing into the correct lower-symmetry structure.</td></tr>
+</table>
+
+<div class="why">
+<strong>Why <code>ISIF = 3</code> is the one that needs a converged
+ENCUT.</strong> Only <code>ISIF = 3</code> changes the cell volume, and only
+a changing volume changes which plane waves fit under the cutoff. That is
+the Pulay stress mechanism from module 04, Part D. A fixed-cell relaxation
+(<code>ISIF = 2</code>) is much more forgiving. So the exposure is specific,
+not general — and it happens to apply to exactly the calculation you are
+running here.
+</div>
+
+<h2 id="run">3. Running it</h2>
+
+<pre>cd tutorials/05_si_relax
+conda activate defects
+cp ~/vasp_pseudo/Si/POTCAR POTCAR
+
+# edit INCAR: set ENCUT to your converged value
+# edit KPOINTS: set your converged mesh
+
+./run_local.sh</pre>
+
+<p>The <a href="run_local.sh"><code>run_local.sh</code></a> script is the
+laptop equivalent of a cluster submit script. It checks the inputs exist,
+verifies that the POSCAR species count matches the POTCAR, runs VASP, and
+then <em>reports whether the relaxation actually converged</em> instead of
+leaving you to assume it.</p>
+
+<div class="tip">
+Read the script. It is short, and the POSCAR/POTCAR consistency check in it
+is the automated version of the reflex module 03 told you to build. Building
+checks like this into your tooling is how you stop relying on remembering.
+</div>
+
+<h2 id="watch">4. Watching it converge</h2>
+
+<p>In a second terminal:</p>
+
+<pre>tail -f OSZICAR</pre>
+
+<p>You will see blocks of <code>DAV:</code> lines (electronic steps) punctuated
+by <code>F=</code> lines (one per ionic step). What healthy convergence looks
+like:</p>
+
+<ul>
+  <li>Each electronic block gets shorter as the relaxation proceeds — later
+      ionic steps start from a better guess.</li>
+  <li>The energy on the <code>F=</code> lines decreases monotonically, and by
+      smaller amounts each time.</li>
+  <li>Silicon from a near-correct starting structure should finish in only a
+      handful of ionic steps.</li>
+</ul>
+
+<p>Warning signs:</p>
+
+<ul>
+  <li><strong>Energy going up and down between ionic steps.</strong> Usually
+      <code>EDIFF</code> too loose, so the forces are noisy.</li>
+  <li><strong>Electronic blocks hitting <code>NELM</code> every time.</strong>
+      Try <code>ALGO = Normal</code> if you were on <code>Fast</code>.</li>
+  <li><strong>Many ionic steps with tiny energy changes.</strong> Often means
+      <code>EDIFFG</code> is tighter than your electronic noise floor —
+      you are chasing numerical dust.</li>
+</ul>
+
+<h2 id="analyze">5. Analyzing the result</h2>
+
+<pre>python analyze_relax.py</pre>
+
+<p>This reports the initial and relaxed lattice constants, the volume change,
+the space group of the relaxed structure, whether the force criterion was
+met, and the error against experiment.</p>
+
+<div class="warning">
+<strong>Check the space group.</strong> Relaxed silicon must still be
+<code>Fd-3m</code>. If it is not, something moved that should not have —
+usually a symptom of a bad starting structure or an <code>ISYM</code>
+problem. A relaxation that quietly lowers the symmetry of a perfect crystal
+is a bug, not a discovery.
+</div>
+
+<h3>Doing it by hand too</h3>
+
+<p>Once, do it without the script, so you know what the script is doing:</p>
+
+<pre># the relaxed structure is CONTCAR, same format as POSCAR
+head -5 CONTCAR
+
+# did it converge?
+grep "reached required accuracy" OUTCAR
+
+# how many ionic steps?
+grep -c "free  energy   TOTEN" OUTCAR
+
+# final energy
+grep "free  energy   TOTEN" OUTCAR | tail -1</pre>
+
+<div class="tip">
+<strong><code>CONTCAR</code> is the relaxed structure.</strong> To continue a
+relaxation that ran out of steps, <code>cp CONTCAR POSCAR</code> and rerun.
+This is one of the most useful moves in VASP and you will do it constantly.
+Keep the original POSCAR somewhere first.
+</div>
+
+<h2 id="error">6. Interpreting the error</h2>
+
+<p>You should get something close to 5.46&nbsp;&Aring;, against an
+experimental 5.431&nbsp;&Aring; — an error of a few tenths of a percent, on
+the high side.</p>
+
+<div class="why">
+<strong>That error is not a mistake, and it is not fixable by converging
+harder.</strong> PBE systematically underbinds covalent semiconductors and
+overestimates their lattice constants by a few tenths of a percent. It is a
+known, documented, reproducible property of the functional. You converged
+the numerics in module 04; what remains is the physics of the
+approximation.
+<br><br>
+The useful skill is holding both error sources in mind at once and knowing
+which is which:
+<ul>
+  <li><strong>Numerical error</strong> — your fault, fixable, and you should
+      have already eliminated it. Detected by convergence testing.</li>
+  <li><strong>Functional error</strong> — a property of the method, not
+      fixable within it, but characterizable. You handle it by knowing its
+      typical size and direction for your class of material, and by comparing
+      against experiment or a better method.</li>
+</ul>
+</div>
+
+<div class="tip">
+This distinction is about to matter far more than it does here. In module 06
+you will find that PBE gets silicon's band gap wrong by roughly a factor of
+two — a much larger functional error, and one that will dominate the
+interpretation of every defect level you compute this semester. Meeting the
+idea now, on a 0.4% lattice constant error, is much easier than meeting it
+for the first time on a 50% band gap error.
+</div>
+
+<h2 id="deliverable">7. Deliverable</h2>
+
+<ol>
+  <li>The relaxed <code>CONTCAR</code>, committed. You need it for module 06.</li>
+  <li><code>INCAR</code> and <code>KPOINTS</code> with your converged values,
+      committed.</li>
+  <li>A short written comparison: your lattice constant, the experimental
+      value, the percentage error, its sign, and a sentence on why that sign
+      is expected.</li>
+  <li>A note on how many ionic steps it took and whether the force criterion
+      was met.</li>
+</ol>
+
+<div class="check">
+<h3>Before moving on to module 06</h3>
+<ul>
+  <li>My relaxation reached the force criterion, and I checked rather than assumed.</li>
+  <li>The relaxed structure is still <code>Fd-3m</code>.</li>
+  <li>I used my own converged ENCUT and k-mesh, not the placeholders.</li>
+  <li>I can explain what <code>ISIF = 3</code> does and why it needs a converged cutoff.</li>
+  <li>I know my lattice constant error, its sign, and why PBE gives that sign.</li>
+  <li>I know how to restart a relaxation from <code>CONTCAR</code>.</li>
+</ul>
+</div>
+
+<div class="nav" style="margin-top:2.5em;border-top:1px solid #eee;border-bottom:none;padding-top:.8em">
+<a href="../">&larr; Tutorial index</a> &nbsp;|&nbsp;
+Prev: <a href="../04_convergence/">&larr; 04_convergence</a> &nbsp;|&nbsp;
+Next: <a href="../06_si_bands/">06_si_bands &rarr;</a></div>
+
+</body>
+</html>

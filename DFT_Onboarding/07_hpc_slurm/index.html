@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>07 — HPC and SLURM</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+<div class="nav"><a href="../">&larr; Tutorial index</a> &nbsp;|&nbsp;
+Prev: <a href="../06_si_bands/">06_si_bands</a></div>
+
+<h1>07 — HPC and SLURM <span class="week">Week 12</span></h1>
+
+<p class="small">Moving the workflow to the group cluster partition: SSH,
+the filesystem, Lmod modules, SLURM, and file transfer.</p>
+
+<div class="goal">
+<strong>Goal.</strong> Run the same calculations you have been running
+locally on the cluster, at supercell sizes your laptop cannot reach, and
+verify that your laptop-scale conclusions survive.
+</div>
+
+<div class="why">
+<strong>Why this comes so late.</strong> You will have done an entire
+native-defect study on your laptop before opening this module. That is
+deliberate. Queue waits break the tight edit-run-look loop that makes
+learning fast, and a cluster adds a whole second category of problems —
+schedulers, modules, filesystems, disk quotas — on top of the physics. By
+Week 12 the physics is familiar, so the new problems are isolated and
+therefore tractable.
+</div>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+  <li><a href="#login">Logging in</a></li>
+  <li><a href="#filesys">The cluster filesystem</a></li>
+  <li><a href="#modules">Lmod modules</a></li>
+  <li><a href="#differences">How the cluster differs from your laptop</a></li>
+  <li><a href="#slurm">SLURM: submitting and managing jobs</a></li>
+  <li><a href="#transfer">Moving files</a></li>
+  <li><a href="#manage">Managing many jobs</a></li>
+  <li><a href="#tips">Survival tips</a></li>
+  <li><a href="#deliverable">Deliverable</a></li>
+</ol>
+</div>
+
+<h2 id="login">1. Logging in</h2>
+
+<pre>ssh yournetid@cluster.address.edu
+exit                                  # disconnect</pre>
+
+<p>Set up a key so you are not typing a password every time. You already did
+this for GitHub in module 01, so you may be able to reuse the key:</p>
+
+<pre>ssh-copy-id yournetid@cluster.address.edu</pre>
+
+<div class="tip">
+Save yourself typing with an entry in <code>~/.ssh/config</code> on your
+laptop:
+<pre>Host ccc
+    HostName cluster.address.edu
+    User yournetid
+    ServerAliveInterval 60</pre>
+Then it is just <code>ssh ccc</code>, and <code>scp file ccc:~/</code>
+works too. <code>ServerAliveInterval</code> stops idle connections from
+being dropped.
+</div>
+
+<h2 id="filesys">2. The cluster filesystem</h2>
+
+<table>
+<tr><th>Path</th><th>Purpose</th><th>Persistent?</th></tr>
+<tr><td><code>/u/yournetid</code> (home)</td>
+    <td>Code, configs, scripts, small results.</td>
+    <td><strong>Yes</strong> — backed up. Usually a modest quota.</td></tr>
+<tr><td><code>/scratch/yournetid</code></td>
+    <td>Large intermediate files: WAVECAR, CHGCAR during a run.</td>
+    <td><strong>No</strong> — purged periodically without warning.</td></tr>
+<tr><td><code>/sw</code>, <code>/apps</code></td>
+    <td>System software.</td>
+    <td>Read-only.</td></tr>
+</table>
+
+<div class="warning">
+<strong>Never put anything you cannot regenerate in
+<code>/scratch</code>.</strong> Not your VASP binary, not your POTCAR
+library, not your scripts, not your only copy of a result. Scratch is for
+transient run output that you copy off afterwards. Purges are automatic and
+there is no recovery.
+<br><br>
+Corollary: the authoritative copy of your work lives in Git, which means it
+lives in three places at once — your laptop, GitHub, and the cluster. That
+is the point.
+</div>
+
+<h3>Watch your quota</h3>
+
+<pre>du -sh ~                    # how much am I using?
+df -h ~                     # how much is there?
+du -h -d 1 . | sort -h      # what in this directory is big?</pre>
+
+<div class="tip">
+VASP output is enormous at scale. A 300-atom <code>WAVECAR</code> can be
+several GB, and a defect study has dozens of calculations. Set
+<code>LWAVE = .FALSE.</code> and <code>LCHARG = .FALSE.</code> unless you
+specifically need them, and clean up as you go rather than discovering you
+are over quota with thirty jobs queued.
+</div>
+
+<h2 id="modules">3. Lmod modules</h2>
+
+<p>Cluster software is loaded on demand rather than being on
+<code>PATH</code> by default:</p>
+
+<pre>module avail                     # everything available
+module avail intel               # filter
+module load intel/mpi/2021.14    # load one
+module list                      # what is loaded now
+module purge                     # unload everything
+module spider vasp               # search across all versions</pre>
+
+<div class="warning">
+<strong><code>module avail vasp</code> returns nothing, and that is
+expected.</strong> VASP is licensed and is not distributed as a cluster
+module — you compile your own, exactly as you did on your laptop in module
+02. The <code>module load intel/...</code> lines in the submit script only
+pull in the MPI and MKL <em>runtime</em> libraries that the cluster build
+was linked against.
+</div>
+
+<h2 id="differences">4. How the cluster differs from your laptop</h2>
+
+<p>Read this section carefully. Most cluster problems come from assuming the
+two environments are the same.</p>
+
+<table>
+<tr><th></th><th>Laptop</th><th>Cluster</th></tr>
+<tr><td>Toolchain</td><td>conda-forge: gfortran, OpenMPI, OpenBLAS</td>
+    <td>Intel compilers, Intel MPI, MKL — loaded via <code>module</code></td></tr>
+<tr><td>How you run</td><td><code>./run_local.sh</code>, immediately</td>
+    <td><code>sbatch vasp_submit</code>, then wait in a queue</td></tr>
+<tr><td>conda</td><td><strong>Must</strong> be activated</td>
+    <td><strong>Must not</strong> be activated for VASP jobs</td></tr>
+<tr><td>Cores</td><td>~8</td><td>16+ per node, many nodes</td></tr>
+<tr><td>Feedback</td><td>Seconds</td><td>Minutes to hours of queue time</td></tr>
+</table>
+
+<div class="warning">
+<strong>Do not <code>conda activate</code> in a SLURM job script.</strong>
+This is the most common laptop-to-cluster mistake. Your conda environment
+carries its own OpenMPI, which will shadow the Intel MPI the cluster binary
+was built against. The job then fails in a genuinely confusing way — often
+by launching N independent single-core calculations instead of one N-core
+job. If you need Python for post-processing on the cluster, do that in a
+separate step, not inside the VASP job.
+</div>
+
+<h3>Two builds, two binaries</h3>
+
+<p>You will have two VASP binaries: the conda-linked one on your laptop and
+an Intel-linked one on the cluster. They should give the same answers to
+within numerical noise. <strong>Verify this rather than assuming it</strong>
+— rerun one laptop calculation on the cluster and compare. A discrepancy
+beyond a meV or so per atom means one of the builds has a problem, and you
+want to discover that on a calculation whose answer you already know.</p>
+
+<h2 id="slurm">5. SLURM: submitting and managing jobs</h2>
+
+<table>
+<tr><th>Command</th><th>Purpose</th></tr>
+<tr><td><code>sbatch vasp_submit</code></td><td>Submit a job. Prints the job ID.</td></tr>
+<tr><td><code>squeue -u $USER</code></td><td>Your jobs. The command you will run most.</td></tr>
+<tr><td><code>scancel 123456</code></td><td>Cancel one job.</td></tr>
+<tr><td><code>sacct -j 123456</code></td><td>After the fact: exit status, runtime, memory used.</td></tr>
+<tr><td><code>sinfo -p eertekin-intel</code></td><td>Is the partition busy?</td></tr>
+<tr><td><code>scontrol show job 123456</code></td><td>Everything about one job.</td></tr>
+</table>
+
+<h3>Job states in <code>squeue</code></h3>
+
+<table>
+<tr><th>ST</th><th>Meaning</th></tr>
+<tr><td><code>PD</code></td><td>Pending — waiting for resources.</td></tr>
+<tr><td><code>R</code></td><td>Running.</td></tr>
+<tr><td><code>CG</code></td><td>Completing (cleanup).</td></tr>
+<tr><td><code>CD</code></td><td>Completed. <strong>Note: this means SLURM is happy, not that VASP converged.</strong></td></tr>
+<tr><td><code>F</code></td><td>Failed.</td></tr>
+<tr><td><code>TO</code></td><td>Timed out — hit the <code>--time</code> limit.</td></tr>
+</table>
+
+<div class="warning">
+<strong><code>CD</code> does not mean your calculation is good.</strong> It
+means the script exited without error. VASP exits cleanly after hitting
+<code>NELM</code> without converging, and after hitting <code>NSW</code>
+with atoms still moving. This is why the
+<a href="vasp_submit"><code>vasp_submit</code></a> script here prints an
+explicit convergence check at the end — the same habit as
+<code>run_local.sh</code>, carried over.
+</div>
+
+<h3>The submit script</h3>
+
+<p><a href="vasp_submit"><code>vasp_submit</code></a> in this directory is
+the group template. Read it — the comments explain each block. Per job, you
+edit two things:</p>
+
+<ul>
+  <li><code>--job-name</code> — make it descriptive.
+      <code>GaN_VN_q1_216at</code> tells you what it is in
+      <code>squeue</code>; <code>test4</code> does not.</li>
+  <li><code>--time</code> — your best estimate plus margin. Too short and
+      you get <code>TO</code> and lose the work; wildly too long and you
+      wait longer in the queue.</li>
+</ul>
+
+<div class="tip">
+<strong>Estimating <code>--time</code>.</strong> You have laptop timings for
+smaller cells. VASP scales roughly as the cube of the number of electrons,
+so tripling the cell size is a factor of ~27 in cost, offset by the extra
+cores. Estimate, then check <code>sacct -j &lt;id&gt;</code> on your first
+few jobs to calibrate. After a week you will guess well.
+</div>
+
+<h2 id="transfer">6. Moving files</h2>
+
+<pre># laptop -> cluster
+scp POSCAR ccc:/u/yournetid/gan/defects/
+
+# cluster -> laptop (run on the laptop)
+scp ccc:/u/yournetid/gan/bands.png .
+
+# whole directory, and smarter: only sends what changed, resumable
+rsync -avP ~/local/gan/ ccc:/u/yournetid/gan/
+rsync -avP ccc:/u/yournetid/gan/ ~/local/gan/</pre>
+
+<div class="tip">
+<strong>Prefer <code>rsync</code> over <code>scp</code>.</strong> It only
+transfers differences, shows progress, and resumes after an interruption.
+The trailing slashes matter: <code>src/</code> copies the
+<em>contents</em> of <code>src</code>, while <code>src</code> copies the
+directory itself. Test with <code>--dry-run</code> first when you are not
+sure.
+</div>
+
+<h3>The better answer: use Git</h3>
+
+<p>For inputs, scripts, and small results, do not transfer files at all —
+<code>git push</code> from your laptop and <code>git pull</code> on the
+cluster. Your <code>.gitignore</code> from module 03 already excludes the
+large binaries, so this moves exactly what should move. Reserve
+<code>rsync</code> for bulk output that does not belong in version
+control.</p>
+
+<h3>Archiving</h3>
+
+<pre>tar -czvf gan_defects.tar.gz gan_defects/    # create
+tar -tzvf gan_defects.tar.gz                 # inspect without extracting
+tar -xzvf gan_defects.tar.gz                 # extract</pre>
+
+<h2 id="manage">7. Managing many jobs</h2>
+
+<p>A native-defect study is dozens of calculations. Directory conventions
+matter far more than you expect — this is the difference between a study you
+can write up and one you have to redo.</p>
+
+<div class="tip">
+<strong>Encode everything in the path.</strong> A directory name should
+identify a calculation uniquely without opening anything:
+<pre>gan/
+  bulk/
+    encut_conv/
+    relax/
+  defects/
+    v_N/
+      q_+1/  q_0/  q_-1/
+    v_Ga/
+      q_0/  q_-1/  q_-2/  q_-3/
+    supercell_scaling/
+      v_N_q0_032at/  v_N_q0_072at/  v_N_q0_216at/</pre>
+By Week 13 you will have hundreds of these. <code>doped</code> imposes its
+own convention, which is one of the reasons to use it — but you should
+understand what a good convention looks like before a tool chooses one for
+you.
+</div>
+
+<h3>Useful one-liners</h3>
+
+<pre># energies from every finished run
+grep "free  energy   TOTEN" */OUTCAR | tail -1
+
+# which runs did NOT converge?
+for d in */; do
+    grep -q "reached required accuracy" "$d/OUTCAR" 2>/dev/null \
+        || echo "NOT CONVERGED: $d"
+done
+
+# how many of my jobs are still queued vs running?
+squeue -u $USER -h -t PD | wc -l
+squeue -u $USER -h -t R  | wc -l</pre>
+
+<div class="warning">
+<strong>Check convergence across the whole set before analyzing any of
+it.</strong> With one calculation you notice a failure. With sixty, a single
+unconverged run hides silently and quietly poisons a formation energy
+diagram. Run the loop above every time, before you plot anything.
+</div>
+
+<h2 id="tips">8. Survival tips</h2>
+
+<table>
+<tr><th>Action</th><th>How</th></tr>
+<tr><td>Watch a running job</td><td><code>tail -f OSZICAR</code></td></tr>
+<tr><td>Session that survives a dropped connection</td><td><code>tmux</code>, reattach with <code>tmux attach</code></td></tr>
+<tr><td>Reverse-search your command history</td><td><kbd>Ctrl</kbd>+<kbd>R</kbd>, then type a fragment</td></tr>
+<tr><td>Repeat the last command</td><td><code>!!</code></td></tr>
+<tr><td>Stop a command</td><td><kbd>Ctrl</kbd>+<kbd>C</kbd></td></tr>
+<tr><td>What is using CPU on this node</td><td><code>top</code> — <kbd>q</kbd> to quit</td></tr>
+</table>
+
+<div class="tip">
+<strong>Learn <code>tmux</code> on day one.</strong> Start a session on the
+login node before you begin monitoring anything. If your SSH connection
+drops — and it will, on hotel wifi or when your laptop sleeps — the session
+keeps running and you reattach where you left off.
+</div>
+
+<h3>Cluster etiquette</h3>
+
+<ul>
+  <li><strong>Never run a calculation on the login node.</strong> It is
+      shared by everyone. Small Python post-processing is fine; VASP is
+      not.</li>
+  <li><strong>Do not request more resources than you can use.</strong>
+      Asking for 4 nodes for a job that scales to 1 wastes the partition and
+      makes your own queue wait longer.</li>
+  <li><strong>Test small before submitting many.</strong> One job to verify
+      the script works, then the batch. Submitting sixty broken jobs is a
+      bad afternoon for you and for everyone else waiting.</li>
+  <li><strong>Clean up.</strong> Delete WAVECARs you do not need. The
+      partition is shared storage.</li>
+</ul>
+
+<h2 id="deliverable">9. Deliverable</h2>
+
+<ol>
+  <li>A working <code>vasp_submit</code> in your repository, adapted to your
+      paths.</li>
+  <li><strong>A cross-validation</strong>: one calculation run both on your
+      laptop and on the cluster, with the energies compared. State the
+      agreement.</li>
+  <li>Large-supercell results for at least two defects, with a written
+      comparison against your laptop-scale numbers. Does the corrected
+      formation energy still agree? If not, that is an important finding —
+      not a failure.</li>
+  <li>A note on your directory convention, and the convergence-checking loop
+      you used across the whole set.</li>
+</ol>
+
+<div class="check">
+<h3>Checklist</h3>
+<ul>
+  <li>I can log in with a key and without typing a password.</li>
+  <li>I know which directories persist and which get purged.</li>
+  <li>I understand why <code>conda activate</code> must not appear in a job script.</li>
+  <li>I have verified the cluster and laptop builds agree on a known calculation.</li>
+  <li>I check convergence across every run in a set before analyzing any of it.</li>
+  <li>My directory names identify calculations without opening them.</li>
+  <li>I use <code>tmux</code> so a dropped connection does not lose my session.</li>
+</ul>
+</div>
+
+<div class="nav" style="margin-top:2.5em;border-top:1px solid #eee;border-bottom:none;padding-top:.8em">
+<a href="../">&larr; Tutorial index</a> &nbsp;|&nbsp;
+Prev: <a href="../06_si_bands/">&larr; 06_si_bands</a></div>
+
+</body>
+</html>

@@ -1,0 +1,61 @@
+# Ertekin Group -- base scientific environment
+#
+# Create with:   conda env create -f environment.yml
+# Activate with: conda activate defects
+# Update with:   conda env update -f environment.yml --prune
+#
+# POLICY: conda-forge only. Do NOT install Homebrew or MacPorts, and do not
+# pip-install anything that exists on conda-forge. One package manager.
+#
+# The defect-specific stack (doped, ShakeNBreak, py-sc-fermi, sumo) is added
+# later, in Week 10 -- deliberately not here, so that a failure installing
+# those cannot block Weeks 1-9.
+
+name: defects
+
+channels:
+  - conda-forge
+  - nodefaults
+
+dependencies:
+  # --- core Python ---
+  - python=3.12
+  - pip
+
+  # --- numerics and plotting ---
+  - numpy
+  - scipy
+  - matplotlib
+  - pandas
+
+  # --- notebooks ---
+  - jupyterlab
+  - ipykernel
+
+  # --- materials science ---
+  - ase
+  - pymatgen
+  - spglib
+  - mp-api          # Materials Project client (new API)
+
+  # --- utilities ---
+  - git
+
+  # --- build/runtime toolchain for compiling VASP (module 02) ---
+  #
+  # These are needed both to BUILD vasp_std and to RUN it, because the
+  # binary links against the MPI and math libraries in this environment.
+  # That is why they live in the same environment as everything else:
+  # `conda activate defects` then becomes the single thing you need to do
+  # before running a calculation.
+  #
+  # Exact package names on osx-arm64 get confirmed during the module 02
+  # build session -- if any of these fail to solve, that is expected and
+  # is something we sort out together rather than something you should
+  # fight alone.
+  - gfortran
+  - openmpi
+  - openblas
+  - fftw
+  - scalapack
+  - make

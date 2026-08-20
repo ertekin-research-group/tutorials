@@ -1,0 +1,77 @@
+#!/bin/bash
+#=======================================================================
+# SLURM submit script for VASP on the group partition.
+#
+# Edit --job-name and --time for each job. Leave the module list alone
+# unless the cluster software stack changes.
+#
+# Submit with:   sbatch vasp_submit
+# Check with:    squeue -u $USER
+# Cancel with:   scancel <jobid>
+#=======================================================================
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=16
+#SBATCH --time=04:00:00
+#SBATCH --job-name=CHANGEME
+#SBATCH -o jobstd.out
+#SBATCH -e jobstd.err
+#SBATCH --partition=eertekin-intel
+
+cd "$SLURM_SUBMIT_DIR"
+
+# --- environment -------------------------------------------------------
+# NOTE: the cluster build of VASP is compiled against Intel MPI and MKL,
+# NOT against your laptop's conda environment. Do NOT `conda activate`
+# here -- that would put a conflicting MPI on PATH and the job will fail
+# in a confusing way. This is the single most common mistake when moving
+# from laptop to cluster.
+module purge
+module load intel/compiler-rt/2025.0.4
+module load intel/tbb/2022.0
+module load intel/mkl/2025.0
+module load intel/mpi/2021.14
+
+export OMP_NUM_THREADS=1
+ulimit -s unlimited
+export I_MPI_HYDRA_BOOTSTRAP=slurm
+
+# --- provenance: makes a finished directory self-documenting -----------
+echo "SLURM_JOBID:     $SLURM_JOB_ID"
+echo "SLURM_NTASKS:    $SLURM_NTASKS"
+echo "Node list:       $SLURM_JOB_NODELIST"
+echo "Working dir:     $SLURM_SUBMIT_DIR"
+echo "Start:           $(date)"
+echo
+
+# --- sanity checks before burning allocation --------------------------
+for f in POSCAR POTCAR INCAR KPOINTS; do
+    if [[ ! -f "$f" ]]; then
+        echo "ERROR: missing $f -- aborting before wasting queue time."
+        exit 1
+    fi
+done
+
+n_poscar=$(sed -n '6p' POSCAR | wc -w | tr -d ' ')
+n_potcar=$(grep -c "End of Dataset" POTCAR || true)
+if [[ "$n_poscar" != "$n_potcar" ]]; then
+    echo "ERROR: POSCAR lists $n_poscar species, POTCAR has $n_potcar."
+    echo "       Order and count must match. Aborting."
+    exit 1
+fi
+
+# --- run ---------------------------------------------------------------
+mpirun -np "${SLURM_NTASKS}" ~/bin/vasp_std
+
+echo
+echo "End:             $(date)"
+
+# --- report convergence rather than leaving it to be assumed ----------
+if grep -q "reached required accuracy" OUTCAR 2>/dev/null; then
+    echo "STATUS: ionic relaxation reached the force criterion."
+elif grep -q "aborting loop because EDIFF is reached" OUTCAR 2>/dev/null; then
+    echo "STATUS: electronic loop converged (static run)."
+else
+    echo "STATUS: WARNING -- no convergence marker found. Check OUTCAR."
+fi
+
+grep "free  energy   TOTEN" OUTCAR 2>/dev/null | tail -1

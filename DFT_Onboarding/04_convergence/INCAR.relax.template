@@ -1,0 +1,31 @@
+# Silicon CELL RELAXATION -- used only by pulay_demo.py
+#
+# ISIF = 3 relaxes both the ions and the cell shape/volume. This is the
+# calculation that is sensitive to Pulay stress, which is exactly why
+# pulay_demo.py runs it at two different values of ENCUT.
+SYSTEM = Si relax (Pulay demo)
+
+PREC   = Accurate
+ENCUT  = {ENCUT}
+LREAL  = .FALSE.
+LASPH  = .TRUE.
+
+EDIFF  = 1E-6
+NELM   = 100
+ALGO   = Normal
+ISPIN  = 1
+
+ISMEAR = 0
+SIGMA  = 0.05
+
+# --- relax ions AND cell ---
+NSW    = 60
+IBRION = 2
+ISIF   = 3
+EDIFFG = -0.005
+
+KPAR   = 2
+NCORE  = 2
+
+LWAVE  = .FALSE.
+LCHARG = .FALSE.

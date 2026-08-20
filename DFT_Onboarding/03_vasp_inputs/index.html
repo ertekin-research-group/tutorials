@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>03 — The Four VASP Input Files</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+<div class="nav"><a href="../">&larr; Tutorial index</a> &nbsp;|&nbsp;
+Prev: <a href="../02_vasp_build_mac/">02_vasp_build_mac</a> &nbsp;|&nbsp;
+Next: <a href="../04_convergence/">04_convergence</a></div>
+
+<h1>03 — The Four Input Files <span class="week">Week 2</span></h1>
+
+<p class="small">What POSCAR, POTCAR, INCAR, and KPOINTS are, where they
+come from, and how to run VASP in parallel on your laptop.</p>
+
+<div class="goal">
+<strong>Goal.</strong> Understand every line of a VASP input set well enough
+to write one from scratch, and know how to launch and monitor a calculation
+locally. This module is reference material as much as instruction — you will
+come back to the INCAR tables all semester.
+</div>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+  <li><a href="#four">The four files</a></li>
+  <li><a href="#poscar">POSCAR — the structure</a></li>
+  <li><a href="#potcar">POTCAR — the pseudopotentials</a></li>
+  <li><a href="#incar">INCAR — the parameters</a></li>
+  <li><a href="#kpoints">KPOINTS — Brillouin zone sampling</a></li>
+  <li><a href="#running">Running VASP on your laptop</a></li>
+  <li><a href="#output">Reading the output</a></li>
+  <li><a href="#git">What to commit</a></li>
+  <li><a href="#mistakes">Common mistakes</a></li>
+  <li><a href="#exercises">Exercises</a></li>
+</ol>
+</div>
+
+<h2 id="four">1. The four files</h2>
+
+<p>Every VASP run needs exactly these four files in the working directory.
+No more, no fewer.</p>
+
+<table>
+<tr><th>File</th><th>What it is</th><th>Where it comes from</th></tr>
+<tr><td><code>POSCAR</code></td>
+    <td>The crystal structure: lattice vectors and atomic positions.</td>
+    <td>Materials Project, or you build it.</td></tr>
+<tr><td><code>POTCAR</code></td>
+    <td>Pseudopotentials, one per element, concatenated in POSCAR order.</td>
+    <td>The licensed library from Elif.</td></tr>
+<tr><td><code>INCAR</code></td>
+    <td>Every calculation parameter: accuracy, what to relax, how to converge.</td>
+    <td>You write it.</td></tr>
+<tr><td><code>KPOINTS</code></td>
+    <td>How densely to sample reciprocal space.</td>
+    <td>You write it, or generate it with pymatgen.</td></tr>
+</table>
+
+<div class="why">
+<strong>A useful way to hold these four in your head.</strong> POSCAR and
+POTCAR describe <em>the physical system</em> — what atoms, arranged how.
+INCAR and KPOINTS describe <em>the numerical approximation</em> — how
+accurately you are going to solve it. The first pair is physics; the second
+pair is convergence. Module 04 is entirely about the second pair, and this
+distinction is why: you converge the numerics until they stop affecting the
+answer, and then the answer is about the physics.
+</div>
+
+<h2 id="poscar">2. POSCAR — the structure</h2>
+
+<h3>Getting one from the Materials Project</h3>
+
+<p>Either through the website (search the formula, download POSCAR, choose
+the symmetrized version), or in Python:</p>
+
+<pre>from mp_api.client import MPRester
+from pymatgen.io.vasp import Poscar
+import os
+
+with MPRester(os.environ["MP_API_KEY"]) as m:
+    s = m.get_structure_by_material_id("mp-149")   # mp-149 = Si
+
+Poscar(s).write_file("POSCAR")</pre>
+
+<h3>Anatomy</h3>
+
+<pre>Si8                          &lt;- line 1: a comment. Free text. Label it usefully.
+1.0                          &lt;- line 2: universal scaling factor (usually 1.0)
+  5.4437  0.0000  0.0000     &lt;- lines 3-5: the three lattice vectors, in Angstrom
+  0.0000  5.4437  0.0000
+  0.0000  0.0000  5.4437
+Si                           &lt;- line 6: element symbols, in order
+8                            &lt;- line 7: how many atoms of each
+direct                       &lt;- line 8: 'direct' = fractional, 'cartesian' = Angstrom
+  0.75  0.75  0.25           &lt;- lines 9+: positions, grouped by element
+  0.00  0.50  0.50
+  ...</pre>
+
+<div class="warning">
+<strong>Line 6 is load-bearing.</strong> The element order on line 6
+determines the order your POTCAR must be concatenated in. If line 6 says
+<code>Ga N</code>, then POTCAR must be gallium followed by nitrogen. Get it
+backwards and VASP runs to completion and gives you a physically meaningless
+number, with no warning of any kind.
+</div>
+
+<div class="tip">
+<strong>Always put something meaningful on line 1.</strong> It costs
+nothing and it appears in the OUTCAR. When you are staring at forty
+directories in Week 10 wondering which is which,
+<code>GaN 96-atom V_N q=+1</code> is worth a great deal more than
+<code>Si8</code>.
+</div>
+
+<h3>Conventional vs primitive cells</h3>
+
+<p>Silicon can be described as an 8-atom cubic cell (conventional, easy to
+picture) or a 2-atom rhombohedral cell (primitive, four times cheaper).
+Both describe the same crystal. Use the primitive cell when you want speed,
+the conventional cell when you want a shape that is easy to reason about, and
+be aware which one you have — energies are reported per cell, so
+<em>always</em> compare energies per atom.</p>
+
+<pre>from pymatgen.core import Structure
+from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
+
+conv = Structure.from_file("POSCAR")
+prim = SpacegroupAnalyzer(conv).get_primitive_standard_structure()
+print(len(conv), "->", len(prim), "atoms")</pre>
+
+<h2 id="potcar">3. POTCAR — the pseudopotentials</h2>
+
+<p>A POTCAR is the per-element pseudopotential files concatenated together,
+in POSCAR order:</p>
+
+<pre># one element
+cp ~/vasp_pseudo/Si/POTCAR POTCAR
+
+# two elements -- ORDER MUST MATCH POSCAR LINE 6
+cat ~/vasp_pseudo/Ga/POTCAR ~/vasp_pseudo/N/POTCAR &gt; POTCAR</pre>
+
+<h3>Choosing a variant</h3>
+
+<p>The library has several potentials per element. The suffix tells you what
+is treated as a valence electron:</p>
+
+<table>
+<tr><th>Variant</th><th>Meaning</th><th>When to use it</th></tr>
+<tr><td><code>Si</code></td><td>Standard PAW.</td><td>The default. Most work.</td></tr>
+<tr><td><code>Ga_d</code></td><td>Semicore <em>d</em> electrons treated as valence.</td>
+    <td>Often necessary for Ga, In, and similar. We will investigate this explicitly for GaN in Week 6.</td></tr>
+<tr><td><code>_pv</code>, <code>_sv</code></td><td>Semicore <em>p</em> or <em>s</em> as valence.</td>
+    <td>High pressure, magnetism, or when the standard one is known to fail.</td></tr>
+<tr><td><code>_GW</code></td><td>Harder potential, needs much higher ENCUT.</td>
+    <td>GW and some hybrid calculations only. Expensive.</td></tr>
+</table>
+
+<div class="why">
+<strong>Why this choice is not cosmetic.</strong> A pseudopotential replaces
+the core electrons with an effective potential, on the assumption that they
+do not participate in bonding. When that assumption is marginal — as it is
+for gallium's 3<em>d</em> states — the choice measurably changes lattice
+constants and band gaps. This is a physics decision disguised as a filename,
+which is exactly why we will test it rather than assume it in Week 6.
+</div>
+
+<h3>Verify what you built</h3>
+
+<pre>head -1 POTCAR                      # e.g. "PAW_PBE Si 05Jan2001"
+grep -c "End of Dataset" POTCAR     # number of elements -- check it matches POSCAR
+grep ENMAX POTCAR                   # recommended minimum cutoff, per element</pre>
+
+<p><code>ENMAX</code> is the potential's own recommendation for the minimum
+plane-wave cutoff. It is a floor, not a converged value — establishing the
+actual converged value is module 04's job.</p>
+
+<h2 id="incar">4. INCAR — the parameters</h2>
+
+<p>A plain text file of <code>TAG = value</code> pairs. Order and spacing do
+not matter; <code>#</code> starts a comment. Every tag has a default, so you
+only set what you want to override.</p>
+
+<h3>A commented skeleton</h3>
+
+<pre># Si bulk, static calculation
+SYSTEM = Si static      # label, appears in OUTCAR
+
+# --- accuracy ---
+PREC   = Accurate       # grid density preset
+ENCUT  = 520            # plane-wave cutoff, eV  <-- module 04 justifies this
+LREAL  = .FALSE.        # real-space projection off (accurate; fine for small cells)
+LASPH  = .TRUE.         # aspherical corrections; recommended for all GGA
+
+# --- electronic convergence ---
+EDIFF  = 1E-6           # stop SCF when energy changes less than this (eV)
+NELM   = 80             # max electronic steps
+ALGO   = Normal         # SCF algorithm
+ISPIN  = 1              # 1 = non-magnetic, 2 = spin-polarized
+
+# --- Brillouin-zone integration ---
+ISMEAR = 0              # Gaussian smearing (correct for semiconductors)
+SIGMA  = 0.05           # smearing width, eV
+
+# --- ionic motion ---
+NSW    = 0              # 0 = static, no ionic steps
+IBRION = -1             # no ion mover
+
+# --- parallelization (see section 6) ---
+KPAR   = 2
+NCORE  = 4
+
+# --- what to write ---
+LWAVE  = .FALSE.        # do not save WAVECAR (large)
+LCHARG = .FALSE.        # do not save CHGCAR (large)</pre>
+
+<h3>The tags you will actually adjust</h3>
+
+<table>
+<tr><th>Tag</th><th>Typical values</th><th>What it controls</th></tr>
+
+<tr><th colspan="3" style="background:#e8eef7">Accuracy</th></tr>
+<tr><td><code>PREC</code></td><td><code>Accurate</code></td><td>FFT grid density and projector defaults. Use <code>Accurate</code>.</td></tr>
+<tr><td><code>ENCUT</code></td><td>1.3&ndash;2 &times; largest ENMAX</td><td>Plane-wave cutoff. <strong>The parameter you converge first.</strong></td></tr>
+<tr><td><code>LREAL</code></td><td><code>.FALSE.</code> small, <code>Auto</code> large</td><td>Real-space projection. Use <code>Auto</code> above roughly 50 atoms for speed.</td></tr>
+<tr><td><code>LASPH</code></td><td><code>.TRUE.</code></td><td>Aspherical gradient corrections. Just leave it on.</td></tr>
+
+<tr><th colspan="3" style="background:#e8eef7">Electronic SCF</th></tr>
+<tr><td><code>EDIFF</code></td><td><code>1E-5</code> relax, <code>1E-6</code> static</td><td>SCF convergence threshold in eV.</td></tr>
+<tr><td><code>NELM</code></td><td>60&ndash;100</td><td>Max SCF steps before giving up.</td></tr>
+<tr><td><code>ALGO</code></td><td><code>Normal</code>, <code>Fast</code>, <code>All</code></td><td>SCF algorithm. If <code>Fast</code> oscillates, use <code>Normal</code>.</td></tr>
+<tr><td><code>ISPIN</code></td><td>1 or 2</td><td>Spin polarization. Si and GaN: 1. Anything with Cr or Fe: 2, always.</td></tr>
+<tr><td><code>MAGMOM</code></td><td>e.g. <code>4*3.0 4*0.0</code></td><td>Initial moments per atom. Only with <code>ISPIN=2</code>, and the starting guess matters.</td></tr>
+<tr><td><code>NELECT</code></td><td>e.g. <code>63</code></td><td>Total electron count. <strong>This is how you make a charged defect</strong> (Week 9).</td></tr>
+
+<tr><th colspan="3" style="background:#e8eef7">Smearing</th></tr>
+<tr><td><code>ISMEAR</code></td><td>0 semiconductor, 1 metal, &minus;5 static DOS</td><td>How the Fermi level is integrated.</td></tr>
+<tr><td><code>SIGMA</code></td><td>0.05 semiconductor, 0.2 metal</td><td>Smearing width in eV.</td></tr>
+
+<tr><th colspan="3" style="background:#e8eef7">Ionic relaxation</th></tr>
+<tr><td><code>NSW</code></td><td>0 static, 100 relax</td><td>Number of ionic steps allowed.</td></tr>
+<tr><td><code>IBRION</code></td><td>&minus;1 none, 2 conjugate gradient</td><td>The algorithm that moves atoms.</td></tr>
+<tr><td><code>ISIF</code></td><td>2 = ions only, 3 = ions + cell</td><td>What is allowed to change. <strong>3 needs a converged ENCUT</strong> — see module 04.</td></tr>
+<tr><td><code>EDIFFG</code></td><td><code>-0.01</code> (eV/&Aring;)</td><td>Ionic convergence. Negative means a force criterion, which is what you want.</td></tr>
+
+<tr><th colspan="3" style="background:#e8eef7">Band structure</th></tr>
+<tr><td><code>ICHARG</code></td><td>0 normal, 11 non-SCF</td><td>11 = read a fixed CHGCAR (module 06).</td></tr>
+<tr><td><code>LORBIT</code></td><td>11</td><td>Write projected DOS information.</td></tr>
+
+<tr><th colspan="3" style="background:#e8eef7">I/O</th></tr>
+<tr><td><code>LWAVE</code></td><td><code>.FALSE.</code> usually</td><td>Save WAVECAR. Large. Only when you need to restart from it.</td></tr>
+<tr><td><code>LCHARG</code></td><td><code>.TRUE.</code> for SCF-before-bands</td><td>Save CHGCAR.</td></tr>
+</table>
+
+<div class="tip">
+<strong>How to start a new INCAR: copy the closest one you already have</strong>
+and change only what differs. Do not write one from a blank file — you will
+omit a tag and not notice. This is also why keeping your working INCARs in
+Git matters.
+</div>
+
+<h2 id="kpoints">5. KPOINTS — Brillouin zone sampling</h2>
+
+<h3>A uniform mesh (almost always what you want)</h3>
+
+<pre>Automatic mesh          &lt;- comment
+0                       &lt;- 0 means "read the grid below"
+Gamma                   &lt;- Gamma-centered (vs 'Monkhorst')
+9 9 9                   &lt;- subdivisions along each reciprocal lattice vector
+0 0 0                   &lt;- shift; leave at zero</pre>
+
+<div class="why">
+<strong>What you are actually choosing.</strong> Physical properties require
+integrals over the Brillouin zone, and VASP approximates those integrals by
+a finite sum over a grid of k-points. More k-points means a better
+approximation and more cost. The right density depends on the cell: a
+<em>large</em> cell has a <em>small</em> Brillouin zone and needs fewer
+k-points. This is why a 96-atom defect supercell can often be run with a
+2&times;2&times;2 mesh while a 2-atom primitive cell needs 12&times;12&times;12
+&mdash; and why you must re-converge whenever the cell size changes.
+</div>
+
+<div class="tip">
+<strong>Use <code>Gamma</code>, not <code>Monkhorst</code>,</strong> for
+hexagonal cells like GaN and AlN. A shifted mesh breaks the hexagonal
+symmetry and can give subtly wrong answers. Gamma-centered is always safe.
+</div>
+
+<h3>Line mode, for band structures</h3>
+
+<p>Do not write these by hand. Generate them with pymatgen — module 06 has a
+working script.</p>
+
+<h2 id="running">6. Running VASP on your laptop</h2>
+
+<pre>conda activate defects
+cd ~/research/myrepo/si_test
+mpirun -np 8 $VASP_STD | tee run.log</pre>
+
+<div class="warning">
+<strong>You must activate the conda environment before running.</strong>
+VASP is linked against the MPI and math libraries inside that environment.
+Without it activated, you will get a cryptic "library not found" error.
+</div>
+
+<h3>How many cores?</h3>
+
+<p>Check what you have:</p>
+
+<pre>sysctl -n hw.perflevel0.physicalcpu    # performance cores
+sysctl -n hw.ncpu                      # total, including efficiency cores</pre>
+
+<p>Use the <strong>performance cores</strong>, and leave one or two free so
+your laptop stays usable. On a machine with 10 performance cores,
+<code>-np 8</code> is a sensible default.</p>
+
+<div class="tip">
+Do not use the efficiency cores. MPI splits work evenly across ranks, so
+every rank waits for the slowest — putting ranks on slow cores drags the
+whole calculation down to their speed. More ranks is not always faster.
+</div>
+
+<h3>KPAR and NCORE</h3>
+
+<table>
+<tr><th>Tag</th><th>What it splits</th><th>Laptop guidance</th></tr>
+<tr><td><code>KPAR</code></td><td>Divides MPI ranks into groups, each handling different k-points.</td>
+    <td>Very effective when you have many k-points. Must divide <code>-np</code> evenly. Try 2 or 4.</td></tr>
+<tr><td><code>NCORE</code></td><td>Number of ranks working together on one orbital.</td>
+    <td>2 or 4. Larger helps for big cells, hurts for small ones.</td></tr>
+</table>
+
+<p>Constraint: <code>KPAR</code> must divide the total rank count. With
+<code>-np 8</code> and <code>KPAR = 2</code>, each k-point group gets 4
+ranks, so <code>NCORE</code> must divide 4.</p>
+
+<div class="tip">
+Do not spend time optimizing this now. <code>KPAR=2</code>,
+<code>NCORE=2</code> with <code>-np 8</code> is fine for everything in
+modules 04&ndash;06. Parallel tuning matters in Week 12 on the cluster,
+where the calculations are large enough to justify the effort.
+</div>
+
+<h2 id="output">7. Reading the output</h2>
+
+<table>
+<tr><th>File</th><th>What it holds</th><th>Size</th></tr>
+<tr><td><code>OSZICAR</code></td><td>Convergence history, one line per SCF step. Your first stop.</td><td>Tiny</td></tr>
+<tr><td><code>OUTCAR</code></td><td>Everything. Energies, forces, timing, warnings.</td><td>Large</td></tr>
+<tr><td><code>CONTCAR</code></td><td>The final structure. Same format as POSCAR.</td><td>Tiny</td></tr>
+<tr><td><code>vasprun.xml</code></td><td>Machine-readable everything. What pymatgen parses.</td><td>Large</td></tr>
+<tr><td><code>WAVECAR</code></td><td>The wavefunctions. Binary.</td><td>Very large</td></tr>
+<tr><td><code>CHGCAR</code></td><td>The charge density. Needed for band structures.</td><td>Large</td></tr>
+</table>
+
+<h3>The commands you will use constantly</h3>
+
+<pre># Did it converge? Watch it live:
+tail -f OSZICAR
+
+# Final total energy:
+grep "free  energy   TOTEN" OUTCAR | tail -1
+
+# Did the ionic relaxation actually converge?
+grep "reached required accuracy" OUTCAR
+
+# Any warnings?
+grep -i "warning" OUTCAR
+
+# Forces on each atom (last ionic step):
+grep -A 10 "TOTAL-FORCE" OUTCAR | tail -12</pre>
+
+<div class="warning">
+<strong>"It finished" is not "it converged."</strong> VASP will exit
+normally after hitting <code>NELM</code> electronic steps without
+converging, and after hitting <code>NSW</code> ionic steps with atoms still
+moving. Nothing in the output shouts about it. Check convergence explicitly,
+every single time. In module 04 you will automate this check, which is the
+only way it happens reliably.
+</div>
+
+<h3>Reading OSZICAR</h3>
+
+<pre>       N       E                     dE             d eps       ncg     rms          rms(c)
+DAV:   1    -0.437150583428E+02   -0.43715E+02   -0.11577E+04  3360   0.352E+02
+DAV:   2    -0.435891255013E+02    0.12593E+00   -0.19334E+00  4368   0.242E+01
+...
+   1 F= -.43589126E+02 E0= -.43589126E+02  d E =-.435891E+02</pre>
+
+<p>The <code>DAV:</code> lines are electronic steps; watch the third column
+(<code>dE</code>) shrink toward your <code>EDIFF</code>. The
+<code>F=</code> line marks the end of one ionic step.</p>
+
+<h2 id="git">8. What to commit</h2>
+
+<p>Copy <a href="gitignore_template"><code>gitignore_template</code></a> in
+this directory to <code>.gitignore</code> at the root of your repository:</p>
+
+<pre>cp ~/path/to/tutorials/03_vasp_inputs/gitignore_template ~/research/myrepo/.gitignore
+cd ~/research/myrepo &amp;&amp; git add .gitignore &amp;&amp; git commit -m "Ignore VASP binary output"</pre>
+
+<p>Commit inputs and small text results. Never commit <code>WAVECAR</code>,
+<code>CHGCAR</code>, or <code>vasprun.xml</code>.</p>
+
+<div class="warning">
+<strong>Never commit a POTCAR.</strong> They are licensed and cannot be
+redistributed — including to a private repository, which may not stay
+private forever. The <code>.gitignore</code> covers this, but know the rule
+rather than relying on the file.
+</div>
+
+<h2 id="mistakes">9. Common mistakes</h2>
+
+<table>
+<tr><th>Mistake</th><th>What happens</th><th>How to catch it</th></tr>
+<tr><td>POTCAR order does not match POSCAR</td>
+    <td>Runs fine. Answer is meaningless.</td>
+    <td><code>head -1 POTCAR</code> and count <code>End of Dataset</code>. Build a reflex.</td></tr>
+<tr><td>ENCUT too low</td>
+    <td>Energies wrong; cell relaxations wrong via Pulay stress.</td>
+    <td>Module 04. Never skip it.</td></tr>
+<tr><td><code>ISMEAR = -5</code> with too few k-points</td>
+    <td>VASP errors out or gives nonsense.</td>
+    <td>Use <code>ISMEAR = 0</code> unless you specifically want tetrahedron DOS.</td></tr>
+<tr><td>Two calculations in one directory</td>
+    <td>Files silently overwrite each other.</td>
+    <td>One directory per calculation. No exceptions.</td></tr>
+<tr><td>Forgot <code>conda activate</code></td>
+    <td>Library not found, or wrong Python.</td>
+    <td><code>which python</code>, <code>which mpirun</code>.</td></tr>
+<tr><td>Comparing energies from different cell sizes</td>
+    <td>Nonsensical comparison.</td>
+    <td>Always divide by the number of atoms.</td></tr>
+<tr><td>Assuming "finished" means "converged"</td>
+    <td>You publish an unconverged number.</td>
+    <td><code>grep "reached required accuracy" OUTCAR</code>.</td></tr>
+</table>
+
+<h2 id="exercises">10. Exercises</h2>
+
+<ol>
+  <li>Download the silicon structure from the Materials Project two ways —
+      website and Python. Confirm the files agree.</li>
+  <li>Convert the 8-atom conventional cell to the primitive cell. How many
+      atoms? Why is that a sensible number?</li>
+  <li>Build a POTCAR for silicon. Find its <code>ENMAX</code>. What is
+      1.3&nbsp;&times;&nbsp;that?</li>
+  <li>Write an INCAR for a static silicon calculation from scratch, without
+      copying the skeleton above. Then compare against it and note what you
+      omitted.</li>
+  <li>Run the calculation with <code>-np 4</code>. Find the total energy.
+      Divide by the number of atoms.</li>
+  <li>Run the <em>same</em> calculation with <code>-np 8</code>. Confirm the
+      energy is identical (to within a fraction of a meV) and note the
+      wall-time difference. <strong>Parallelization must not change the
+      answer</strong> — if it does, something is wrong with the build.</li>
+  <li>Deliberately break something: swap POTCAR order in a two-element
+      system, or drop ENCUT to 200. Look at what the output does — and does
+      not — tell you. This is the most valuable exercise on the page.</li>
+</ol>
+
+<div class="check">
+<h3>Before moving on to module 04</h3>
+<ul>
+  <li>I can write all four input files from scratch for a simple system.</li>
+  <li>I know why POTCAR order matters and how to check it.</li>
+  <li>I can launch a parallel run and monitor it while it runs.</li>
+  <li>I can extract the total energy and check whether it converged.</li>
+  <li>My repository has a <code>.gitignore</code> that excludes VASP binaries.</li>
+  <li>I understand the difference between the physics inputs and the numerical inputs.</li>
+</ul>
+</div>
+
+<div class="nav" style="margin-top:2.5em;border-top:1px solid #eee;border-bottom:none;padding-top:.8em">
+<a href="../">&larr; Tutorial index</a> &nbsp;|&nbsp;
+Prev: <a href="../02_vasp_build_mac/">&larr; 02_vasp_build_mac</a> &nbsp;|&nbsp;
+Next: <a href="../04_convergence/">04_convergence &rarr;</a></div>
+
+</body>
+</html>

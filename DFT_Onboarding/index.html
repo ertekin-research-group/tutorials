@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Ertekin Group — Getting Started Tutorials</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<h1>Getting Started: DFT for Defects in Semiconductors</h1>
+
+<p class="small">Ertekin Group tutorial series. Written for someone who has
+never compiled a code, never run a DFT calculation, and never used Git.
+Work through the modules in order.</p>
+
+<div class="goal">
+<strong>What this series gets you to.</strong> By the end of module 07 you
+will have built VASP from source on your own laptop, converged your own
+numerical parameters, relaxed a crystal, computed a band structure, and
+moved the whole workflow onto an HPC cluster. That is the complete
+foundation for everything we do afterwards with defects.
+</div>
+
+<h2>The modules</h2>
+
+<table class="modtable">
+<tr><th>Module</th><th>What it covers</th><th>Week</th></tr>
+
+<tr><td><a href="00_shell_basics/">00_shell_basics</a></td>
+    <td>The command line on macOS: navigating, files, searching, editing,
+        pipes, environment variables. The vocabulary everything else
+        assumes.</td>
+    <td>1</td></tr>
+
+<tr><td><a href="01_toolchain/">01_toolchain</a></td>
+    <td>miniforge and your conda environment; Git and the group GitHub
+        organization; Materials Project API key; the POTCAR library and
+        <code>PMG_VASP_PSP_DIR</code>; VS&nbsp;Code.</td>
+    <td>1</td></tr>
+
+<tr><td><a href="02_vasp_build_mac/">02_vasp_build_mac</a></td>
+    <td>Compiling VASP against a conda-only toolchain on Apple Silicon.
+        A <em>working session</em> with Elif, not a recipe to copy.</td>
+    <td>2</td></tr>
+
+<tr><td><a href="03_vasp_inputs/">03_vasp_inputs</a></td>
+    <td>The four input files — POSCAR, POTCAR, INCAR, KPOINTS — and how to
+        run VASP in parallel on your laptop.</td>
+    <td>2</td></tr>
+
+<tr><td><a href="04_convergence/">04_convergence</a></td>
+    <td><strong>ENCUT and k-mesh convergence testing.</strong> The most
+        important habit in the field. Includes Pulay stress, and why
+        convergence comes before relaxation.</td>
+    <td>4</td></tr>
+
+<tr><td><a href="05_si_relax/">05_si_relax</a></td>
+    <td>Relaxing silicon with your converged parameters, and comparing the
+        lattice constant to experiment.</td>
+    <td>5</td></tr>
+
+<tr><td><a href="06_si_bands/">06_si_bands</a></td>
+    <td>SCF then non-SCF along a high-symmetry path; plotting the band
+        structure; meeting the DFT band gap problem.</td>
+    <td>5</td></tr>
+
+<tr><td><a href="07_hpc_slurm/">07_hpc_slurm</a></td>
+    <td>SSH, the cluster filesystem, Lmod modules, SLURM, rsync. Moving
+        the workflow to the group partition.</td>
+    <td>12</td></tr>
+</table>
+
+<div class="why">
+<strong>Why 04 comes before 05.</strong> Notice that convergence testing
+happens <em>before</em> the first relaxation. This is not tidiness. An
+unconverged plane-wave cutoff produces <em>Pulay stress</em>, which
+specifically corrupts cell relaxations — so relaxing a cell with an
+unconverged <code>ENCUT</code> gives you a lattice constant that is wrong
+for a reason no amount of careful relaxation will fix. Converge on a fixed
+structure first, then relax. Learn the reason, not the ritual.
+</div>
+
+<h2>How to work through these</h2>
+
+<ul>
+  <li><strong>In order, without skipping.</strong> Each module assumes the
+      previous ones.</li>
+  <li><strong>Type the commands, do not paste them.</strong> Slower, and
+      that is the point — you will remember them.</li>
+  <li><strong>When something fails, read the error before doing anything
+      else.</strong> Most of learning computational work is getting
+      comfortable with error messages instead of alarmed by them.</li>
+  <li><strong>Ask early.</strong> The cost of asking is much smaller than
+      the cost of being stuck for a week. In your first month it is genuinely
+      hard to tell a five-minute problem from a five-day one — that judgment
+      is exactly what you do not have yet, so do not try to exercise it
+      alone.</li>
+  <li><strong>Keep notes as you go.</strong> When a module's instructions
+      turn out to be wrong or incomplete on your machine, write down what
+      actually worked. These tutorials get better that way.</li>
+</ul>
+
+<div class="tip">
+<strong>A note on Claude.</strong> You have Claude Code in VS&nbsp;Code and
+you should use it — for reading error messages, for explaining what an INCAR
+tag does, for writing plotting scripts. Two rules. First, never let it write
+something you could not check: if you cannot tell whether the output is
+right, you are not ready to delegate that piece. Second, when it fixes
+something, make sure you understand <em>what</em> was wrong before moving
+on. The goal is that you become self-sufficient, and a tool that solves
+problems you never understood works against that.
+</div>
+
+<h2>Conventions used throughout</h2>
+
+<table>
+<tr><th>Style</th><th>Meaning</th></tr>
+<tr><td><code>like this</code></td><td>A command, filename, or tag you type or see.</td></tr>
+<tr><td><div class="tip" style="margin:0;padding:.3em .6em">Green box</div></td>
+    <td>A tip that will save you time.</td></tr>
+<tr><td><div class="warning" style="margin:0;padding:.3em .6em">Red box</div></td>
+    <td>A mistake that will cost you real time if you make it. Read these.</td></tr>
+<tr><td><div class="why" style="margin:0;padding:.3em .6em">Yellow box</div></td>
+    <td><em>Why</em> something is done this way, not just how.</td></tr>
+</table>
+
+<p class="small" style="margin-top:3em">Originally developed from a silicon
+VASP tutorial written for the group's campus cluster; restructured and
+extended for laptop-first work.</p>
+
+</body>
+</html>

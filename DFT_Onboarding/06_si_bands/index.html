@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>06 — Band Structure of Silicon</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+<div class="nav"><a href="../">&larr; Tutorial index</a> &nbsp;|&nbsp;
+Prev: <a href="../05_si_relax/">05_si_relax</a> &nbsp;|&nbsp;
+Next: <a href="../07_hpc_slurm/">07_hpc_slurm</a></div>
+
+<h1>06 — Band Structure <span class="week">Week 5</span></h1>
+
+<p class="small">The SCF then non-SCF workflow, a band structure along a
+high-symmetry path, and your first encounter with the DFT band gap
+problem.</p>
+
+<div class="goal">
+<strong>Goal.</strong> Produce a silicon band structure, read the indirect
+gap off it, and understand why that gap is roughly half the experimental
+value — and why that matters for everything you will do with defects.
+</div>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+  <li><a href="#why2">Why this takes two calculations</a></li>
+  <li><a href="#prep">Step 1 — prepare the inputs</a></li>
+  <li><a href="#scf">Step 2 — the SCF run</a></li>
+  <li><a href="#nscf">Step 3 — the non-SCF run</a></li>
+  <li><a href="#plot">Step 4 — plot</a></li>
+  <li><a href="#gap">The band gap problem</a></li>
+  <li><a href="#deliverable">Deliverable</a></li>
+</ol>
+</div>
+
+<h2 id="why2">1. Why this takes two calculations</h2>
+
+<p>A band structure is the set of electron energies
+<em>E</em><sub><em>n</em></sub>(<strong>k</strong>) along a path through
+reciprocal space connecting high-symmetry points. You cannot get that from
+one ordinary calculation, because of a conflict:</p>
+
+<ul>
+  <li>A <strong>self-consistent</strong> calculation needs a
+      <em>uniform</em> k-mesh, because it integrates over the Brillouin zone
+      to build the charge density.</li>
+  <li>A <strong>band structure</strong> needs points along a <em>line</em>,
+      which is a terrible sampling for that integral.</li>
+</ul>
+
+<p>The resolution is to split the work in two:</p>
+
+<table>
+<tr><th>Stage</th><th>k-points</th><th>What it does</th><th>Key tag</th></tr>
+<tr><td><strong>SCF</strong></td><td>Uniform mesh</td>
+    <td>Converge the charge density and save it to <code>CHGCAR</code>.</td>
+    <td><code>LCHARG = .TRUE.</code></td></tr>
+<tr><td><strong>non-SCF</strong></td><td>Line mode</td>
+    <td>Read that fixed charge density and just evaluate eigenvalues along the path.</td>
+    <td><code>ICHARG = 11</code></td></tr>
+</table>
+
+<div class="why">
+<strong>What <code>ICHARG = 11</code> means.</strong> "Read the charge
+density from <code>CHGCAR</code> and do not update it." The second
+calculation is not self-consistent at all — it solves the Kohn-Sham
+equations once, in the fixed potential produced by the first. That is both
+legitimate and much cheaper: the density is a Brillouin-zone integral, so it
+was correct to get it from a uniform mesh, and eigenvalues at any given
+<strong>k</strong> depend on the potential rather than on the other
+k-points.
+</div>
+
+<div class="warning">
+<strong>The two runs must be numerically identical apart from the
+k-points.</strong> Same <code>ENCUT</code>, same POTCAR, same
+<code>PREC</code>, same structure. Change any of those between the SCF and
+the non-SCF step and the eigenvalues you get do not correspond to the
+density you computed. The INCARs in <code>scf/</code> and
+<code>nscf/</code> both carry the same ENCUT placeholder for this reason —
+change both, to the same value.
+</div>
+
+<h2 id="prep">2. Step 1 — prepare the inputs</h2>
+
+<p>This module starts from the relaxed structure you produced in module 05:</p>
+
+<pre>cd tutorials/06_si_bands
+conda activate defects
+python prep_bands.py</pre>
+
+<p><a href="prep_bands.py"><code>prep_bands.py</code></a> does four things,
+and it is worth reading because it is a compact tour of pymatgen:</p>
+
+<ol>
+  <li>Reads <code>../05_si_relax/CONTCAR</code> — your relaxed structure.</li>
+  <li>Converts the 8-atom conventional cell to the 2-atom primitive cell.</li>
+  <li>Writes that primitive POSCAR into both <code>scf/</code> and
+      <code>nscf/</code>.</li>
+  <li>Generates a line-mode <code>KPOINTS</code> for <code>nscf/</code>
+      along the standard FCC high-symmetry path.</li>
+</ol>
+
+<div class="tip">
+<strong>Why switch to the primitive cell?</strong> Band structures are
+conventionally plotted in the primitive Brillouin zone. Using the 8-atom
+conventional cell would fold the bands — the same physics, but with four
+times as many bands crossing each other, and a plot that does not match any
+textbook figure. It is also four times cheaper.
+</div>
+
+<p>Then copy POTCARs into both directories:</p>
+
+<pre>cp ~/vasp_pseudo/Si/POTCAR scf/POTCAR
+cp ~/vasp_pseudo/Si/POTCAR nscf/POTCAR</pre>
+
+<p>And set your converged <code>ENCUT</code> in <strong>both</strong>
+<code>scf/INCAR</code> and <code>nscf/INCAR</code>.</p>
+
+<h2 id="scf">3. Step 2 — the SCF run</h2>
+
+<pre>cd scf
+./run_local.sh</pre>
+
+<p>Note the two tags that differ from module 05:</p>
+
+<ul>
+  <li><code>LCHARG = .TRUE.</code> — save the charge density. This is the
+      whole output that matters.</li>
+  <li><code>NSW = 0</code>, <code>IBRION = -1</code> — static. The structure
+      is already relaxed; do not move it again.</li>
+</ul>
+
+<p>Confirm the <code>CHGCAR</code> exists and is not empty:</p>
+
+<pre>ls -lh CHGCAR</pre>
+
+<h2 id="nscf">4. Step 3 — the non-SCF run</h2>
+
+<pre>cd ../nscf
+cp ../scf/CHGCAR CHGCAR
+./run_local.sh</pre>
+
+<div class="warning">
+<strong>You must copy the CHGCAR yourself.</strong> With
+<code>ICHARG = 11</code> and no <code>CHGCAR</code> present, VASP does not
+necessarily stop with a clear error — it may fall back to something else and
+give you a plausible-looking, wrong band structure. Check the file is there
+before you run.
+</div>
+
+<p>This run is fast — there is no SCF loop to converge, just one
+diagonalization per k-point along the path.</p>
+
+<h2 id="plot">5. Step 4 — plot</h2>
+
+<pre>cd ..
+python plot_bands.py</pre>
+
+<p>This produces <code>Si_bands.png</code> and prints the gap, the VBM and
+CBM locations, and — the actual point of the module — a comparison against
+experiment.</p>
+
+<h3>What a correct silicon band structure looks like</h3>
+
+<ul>
+  <li>The valence band maximum sits at <strong>&Gamma;</strong>.</li>
+  <li>The conduction band minimum sits near <strong>X</strong>, <em>not</em>
+      at &Gamma;. Hence <strong>indirect</strong>.</li>
+  <li>The valence band width is roughly 12 eV.</li>
+  <li>Four valence bands (eight valence electrons in the 2-atom cell).</li>
+</ul>
+
+<div class="tip">
+Check the indirect character explicitly rather than eyeballing it. The
+script prints both the VBM and CBM k-point indices — if they are the same,
+something is wrong with your path or your structure.
+</div>
+
+<h2 id="gap">6. The band gap problem</h2>
+
+<p>Your computed gap will be around 0.6&nbsp;eV. The experimental value is
+1.17&nbsp;eV. You are low by roughly a factor of two.</p>
+
+<div class="warning">
+<strong>This is not a mistake, and it is not fixable by converging
+harder.</strong> Semi-local functionals like PBE systematically
+underestimate band gaps, typically by 30&ndash;50%. The cause is a real
+deficiency of the approximation, not a numerical one. Raising
+<code>ENCUT</code> or the k-point density does nothing for it — you already
+converged those in module 04.
+</div>
+
+<h3>Notice what PBE gets right</h3>
+
+<p>The gap magnitude is badly wrong, but the <em>topology</em> is correct:
+the gap is properly indirect, the VBM is at &Gamma;, the CBM is near X, and
+the valence band dispersion is quite accurate. PBE gets the shape roughly
+right and the gap size badly wrong. That pattern is general, and it is why
+band-gap corrections are often applied as a rigid shift rather than a
+recalculation.</p>
+
+<h3>Why this dominates defect physics</h3>
+
+<div class="why">
+Defect levels are reported <em>relative to the band edges</em> — "0.9 eV
+below the conduction band minimum". If your gap is only half as wide as it
+should be, there is only half as much room in which to place that level,
+and every charge transition level you compute inherits the error. This is
+the single biggest reason the modern defect literature uses hybrid
+functionals such as HSE06.
+<br><br>
+And it is much worse for our actual materials than for silicon. GaN's
+experimental gap is 3.4&nbsp;eV and AlN's is 6.2&nbsp;eV; PBE will
+underestimate both severely, AlN dramatically so. You will measure exactly
+how badly in Week 6.
+</div>
+
+<h3>What we will do about it</h3>
+
+<p>For this semester, work in PBE deliberately. It is cheap enough to let
+you learn the entire workflow — supercells, charge states, finite-size
+corrections, chemical potentials — and every one of those methodological
+steps is identical regardless of functional. In Week 15 you will run HSE06
+on the bulk hosts, confirm the gaps come out close to experiment, measure
+the cost, and use that to plan the spring.</p>
+
+<div class="tip">
+<strong>Set this expectation for yourself now.</strong> When your Week 11
+transition levels disagree with the published hybrid-functional numbers,
+this is why. That disagreement is anticipated, and the right response is to
+quantify and explain it — not to assume you have a bug. Every student hits
+this and quietly assumes they broke something.
+</div>
+
+<h2 id="deliverable">7. Deliverable</h2>
+
+<ol>
+  <li><code>Si_bands.png</code>, committed, with readable axes and a caption
+      that stands alone.</li>
+  <li>The computed gap, the experimental value, and the ratio.</li>
+  <li>A short written statement identifying the VBM and CBM locations and
+      confirming the gap is indirect.</li>
+  <li><strong>A paragraph on the band gap problem</strong> in your report:
+      what it is, why it is not a convergence issue, and why it matters for
+      defect levels specifically. You will reuse this paragraph — write it
+      properly now.</li>
+</ol>
+
+<div class="check">
+<h3>Before moving on</h3>
+<ul>
+  <li>My band structure has the VBM at &Gamma; and the CBM near X.</li>
+  <li>I used the same ENCUT and POTCAR in both the SCF and non-SCF runs.</li>
+  <li>I understand what <code>ICHARG = 11</code> does and why two runs are needed.</li>
+  <li>I can state my gap, the experimental gap, and the ratio.</li>
+  <li>I can explain why a denser k-mesh will not fix the gap.</li>
+  <li>I understand why this specifically corrupts computed defect levels.</li>
+</ul>
+</div>
+
+<p class="small" style="margin-top:2.5em">Modules 00&ndash;06 complete the
+laptop workflow. Module 07 moves it to the cluster, and is not needed until
+Week 12 — by which point you will have done a full defect study locally.</p>
+
+<div class="nav" style="margin-top:2em;border-top:1px solid #eee;border-bottom:none;padding-top:.8em">
+<a href="../">&larr; Tutorial index</a> &nbsp;|&nbsp;
+Prev: <a href="../05_si_relax/">&larr; 05_si_relax</a> &nbsp;|&nbsp;
+Next: <a href="../07_hpc_slurm/">07_hpc_slurm &rarr;</a></div>
+
+</body>
+</html>

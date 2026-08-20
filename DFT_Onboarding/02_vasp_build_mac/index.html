@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>02 — Building VASP on Apple Silicon</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+<div class="nav"><a href="../">&larr; Tutorial index</a> &nbsp;|&nbsp;
+Prev: <a href="../01_toolchain/">01_toolchain</a> &nbsp;|&nbsp;
+Next: <a href="../03_vasp_inputs/">03_vasp_inputs</a></div>
+
+<h1>02 — Building VASP <span class="week">Week 2 — working session</span></h1>
+
+<p class="small">Compiling VASP from source against a conda-only toolchain
+on an Apple Silicon Mac.</p>
+
+<div class="warning">
+<strong>This module is deliberately not a recipe.</strong> There is no list
+of commands here to copy, and that is on purpose. We will do this
+<em>together</em>, in the Week 2 meeting, with Elif in the room and Claude
+Code driving the build interactively.
+<br><br>
+Compiling scientific software on a machine nobody has built it on before is
+genuinely fiddly, and it is not a solved problem you can look up. Watching
+how the problem gets <em>diagnosed</em> is the entire point of the session.
+A recipe would rob you of that, and it would also be a lie — any recipe
+written in advance would be guessing at your specific machine.
+</div>
+
+<div class="goal">
+<strong>Goal.</strong> A working <code>vasp_std</code> binary that runs in
+parallel on your laptop, built entirely from conda-forge packages. Plus
+notes good enough that the next student has a real starting point.
+</div>
+
+<h2>1. Why this is harder than installing a normal package</h2>
+
+<p>You have spent module 01 installing things with <code>conda install</code>.
+VASP does not work that way, for three reasons:</p>
+
+<ul>
+  <li><strong>It is licensed, closed source.</strong> You get a tarball of
+      Fortran source code, not a package. It is not on conda-forge, not on
+      PyPI, and never will be. Elif holds the group license and it covers
+      installation on your laptop.</li>
+  <li><strong>You must compile it yourself.</strong> That means turning
+      ~200,000 lines of Fortran into a binary, correctly linked against an
+      MPI implementation, a linear algebra library, and an FFT library.</li>
+  <li><strong>Apple Silicon is not the common case.</strong> Most VASP
+      installations in the world are on Intel/Linux clusters using Intel's
+      compilers and MKL. Almost every build guide you find online assumes
+      that. We are on arm64 macOS with GNU compilers from conda-forge, which
+      is a legitimate but much less trodden path.</li>
+</ul>
+
+<div class="why">
+<strong>Why not just use the cluster and skip this?</strong> Because a
+calculation you can start in five seconds and restart after a mistake is a
+calculation you will actually learn from. Queue waits break the tight
+feedback loop that makes the first two months productive. You will move to
+the cluster in Week 12, once you know what you are doing and the
+calculations are genuinely too big — not before.
+</div>
+
+<h2>2. Before the meeting</h2>
+
+<p>Have all of this ready. If any piece is missing we lose the session.</p>
+
+<div class="check">
+<h3>Pre-meeting checklist</h3>
+<ul>
+  <li>Module 01 complete — <code>check_setup.py</code> passes every required check.</li>
+  <li>The <strong>VASP source tarball</strong> from Elif, downloaded and
+      unpacked somewhere sensible (e.g. <code>~/software/vasp.6.x.x/</code>).
+      Know the exact path.</li>
+  <li>The <strong>POTCAR library</strong> in place from module 01.</li>
+  <li><code>conda activate defects</code> works and the environment has
+      the compiler and library packages in it.</li>
+  <li>VS&nbsp;Code open, with the Claude Code extension working.</li>
+  <li>At least 10&nbsp;GB free disk space and your laptop <strong>plugged
+      in</strong>. Compiling is CPU-heavy and will drain a battery fast.</li>
+</ul>
+</div>
+
+<h3>What the build needs, conceptually</h3>
+
+<p>You do not need to know how to configure these — but you should know
+what the pieces <em>are</em>, so the conversation in the meeting means
+something:</p>
+
+<table>
+<tr><th>Piece</th><th>What it does</th><th>conda-forge package</th></tr>
+<tr><td>Fortran compiler</td>
+    <td>Turns the source into machine code.</td>
+    <td><code>gfortran</code></td></tr>
+<tr><td>MPI</td>
+    <td>Lets VASP split work across your CPU cores and communicate between them.</td>
+    <td><code>openmpi</code></td></tr>
+<tr><td>BLAS / LAPACK</td>
+    <td>Dense linear algebra — matrix multiplication, eigenvalue problems. Most of VASP's time is spent here.</td>
+    <td><code>openblas</code></td></tr>
+<tr><td>ScaLAPACK</td>
+    <td>The distributed-memory version of LAPACK, for problems split across MPI ranks.</td>
+    <td><code>scalapack</code></td></tr>
+<tr><td>FFTW</td>
+    <td>Fast Fourier transforms — the other half of where the time goes, moving between real and reciprocal space.</td>
+    <td><code>fftw</code></td></tr>
+</table>
+
+<div class="why">
+<strong>Why these two libraries in particular?</strong> Plane-wave DFT is,
+computationally, mostly two operations repeated an enormous number of
+times: FFTs to move wavefunctions between real space and reciprocal space,
+and dense linear algebra to orthogonalize and diagonalize. That is why the
+quality of the BLAS and FFT libraries matters so much more than the quality
+of the compiler, and why "which BLAS did you link against?" is a reasonable
+question to ask about someone's benchmark.
+</div>
+
+<h2>3. How the session will go</h2>
+
+<p>Roughly this shape. Expect detours.</p>
+
+<ol>
+  <li><strong>Confirm the toolchain.</strong> Check that
+      <code>gfortran</code>, <code>mpifort</code>, and <code>mpirun</code>
+      all resolve to binaries inside
+      <code>~/miniforge3/envs/defects/</code> and not somewhere else.
+      <code>which</code> is your friend.</li>
+
+  <li><strong>Look at what VASP provides.</strong> The source tree has an
+      <code>arch/</code> directory full of <code>makefile.include</code>
+      templates for different compiler and platform combinations. One of the
+      GNU/OpenMPI ones is the starting point. None of them will be exactly
+      right.</li>
+
+  <li><strong>Adapt it.</strong> This is the real work: pointing the
+      library and include paths at <code>$CONDA_PREFIX</code> instead of
+      wherever the template expects, and getting the preprocessor flags
+      right. This is where you bring Claude in — give it the template, the
+      output of <code>conda list</code>, and your <code>CONDA_PREFIX</code>,
+      and work through it.</li>
+
+  <li><strong>Compile.</strong> <code>make std</code>, or similar. It will
+      take a while and it will probably fail the first time. Failure here is
+      the normal case, not a sign something is wrong with you or your
+      machine.</li>
+
+  <li><strong>Read the error and iterate.</strong> The bulk of the session.
+      See the failure categories below.</li>
+
+  <li><strong>Test.</strong> Run something small and check the answer is
+      physically sensible, not just that the binary launched.</li>
+</ol>
+
+<h3>Working with Claude on this</h3>
+
+<p>Some things that make the difference between Claude being useful and
+being a time sink:</p>
+
+<ul>
+  <li><strong>Give it context up front,</strong> not one error at a time:
+      the platform (<code>uname -m</code>), the compiler versions, the
+      relevant <code>conda list</code> output, <code>$CONDA_PREFIX</code>,
+      and the <code>makefile.include</code> you are starting from.</li>
+  <li><strong>Paste the whole error,</strong> not the last line. Fortran
+      link errors are long and the useful part is often in the middle.</li>
+  <li><strong>Ask it to explain the fix,</strong> not just make it. "Why
+      did that flag matter?" is the question that makes this session worth
+      ninety minutes instead of being a black box.</li>
+  <li><strong>Keep a log.</strong> Every change you make to
+      <code>makefile.include</code>, and why. This becomes the deliverable.</li>
+</ul>
+
+<h2>4. Failure categories you are likely to meet</h2>
+
+<p>Named here so you recognize them rather than being defeated by them.
+No solutions — the solutions depend on your machine, and finding them is
+the exercise.</p>
+
+<table>
+<tr><th>Symptom</th><th>What it usually means</th></tr>
+<tr><td><code>ld: library not found for -lxxx</code></td>
+    <td>The linker cannot find a library. Usually a path pointing outside the conda environment, or a package that is not actually installed.</td></tr>
+<tr><td><code>Symbol not found</code> / undefined reference at link time</td>
+    <td>Something compiled, but the function it calls does not exist in the libraries provided. Often a BLAS/ScaLAPACK naming or version mismatch.</td></tr>
+<tr><td>Compiles fine, crashes immediately on run</td>
+    <td>Frequently an integer-size mismatch (32-bit vs 64-bit array indexing) between VASP and the BLAS library. A classic, and confusing because the build looked clean.</td></tr>
+<tr><td><code>mpirun</code> runs N independent copies instead of one N-core job</td>
+    <td>VASP was compiled without MPI support, or against a different MPI than the <code>mpirun</code> on your PATH. Diagnostic: the output will show N identical calculations rather than one distributed one.</td></tr>
+<tr><td>Preprocessor / <code>#define</code> errors</td>
+    <td>The <code>CPP_OPTIONS</code> line in <code>makefile.include</code> needs adjusting for this platform.</td></tr>
+<tr><td>Runs, but gives an obviously wrong energy</td>
+    <td>The most dangerous category, because nothing announces itself. This is why step 6 tests against a known answer.</td></tr>
+</table>
+
+<div class="warning">
+<strong>A clean build is not a correct build.</strong> A binary that
+compiles, links, and runs can still be numerically wrong — most often
+through a silently mismatched math library. This is exactly why the
+validation step below compares against a <em>known</em> answer rather than
+just checking that a number came out.
+</div>
+
+<h2>5. What success looks like</h2>
+
+<p>Three tests, in order. Do not skip the third.</p>
+
+<h3>Test 1 — the binary exists and is executable</h3>
+<pre>ls -lh /path/to/vasp.6.x.x/bin/vasp_std
+file /path/to/vasp.6.x.x/bin/vasp_std     # should say arm64, not x86_64</pre>
+
+<h3>Test 2 — it actually runs in parallel</h3>
+
+<p>Go to <a href="../05_si_relax/">module 05</a>'s directory, which has a
+complete silicon input set, and run:</p>
+
+<pre>conda activate defects
+mpirun -np 4 /path/to/vasp_std | tail -20</pre>
+
+<p>Then check the top of the <code>OUTCAR</code>:</p>
+
+<pre>grep -i "running on" OUTCAR</pre>
+
+<p>It should report 4 cores in one job. If it says 1 core, or if you see
+four separate calculations starting, MPI is not working — that is failure
+category 4 above.</p>
+
+<h3>Test 3 — the answer is right</h3>
+
+<p>This is the test that matters. Run the silicon calculation and check the
+total energy:</p>
+
+<pre>grep "free  energy   TOTEN" OUTCAR | tail -1</pre>
+
+<p>For the 8-atom silicon cell in module 05 with those inputs, you should
+get roughly <strong>&minus;43 eV</strong> (about &minus;5.4 eV per atom).</p>
+
+<div class="tip">
+Do not expect an exact match to any number written here — it depends on the
+POTCAR version and VASP version. But you should be within a fraction of an
+eV per atom. If you get &minus;5.4&nbsp;eV/atom, the build is sound. If you
+get something wildly different, or <code>NaN</code>, the build is broken
+regardless of how cleanly it compiled.
+</div>
+
+<h3>Make it easy to call</h3>
+
+<p>Once it works, add a shortcut to <code>~/.zshrc</code> so you are not
+typing the full path forever:</p>
+
+<pre>export VASP_STD="$HOME/software/vasp.6.x.x/bin/vasp_std"
+alias vasp4="mpirun -np 4 $VASP_STD"
+alias vasp8="mpirun -np 8 $VASP_STD"</pre>
+
+<h2>6. Deliverable</h2>
+
+<p>Two things, both committed to your repository:</p>
+
+<ol>
+  <li><strong>Your working <code>makefile.include</code></strong>, in a
+      <code>vasp_build/</code> directory. This is the single most valuable
+      artifact of the session.</li>
+
+  <li><strong>A build log in Markdown</strong> — <code>BUILD_NOTES.md</code>
+      — recording:
+      <ul>
+        <li>Machine and OS version, and the output of <code>uname -m</code></li>
+        <li>Exact conda package versions of the toolchain
+            (<code>conda list | grep -E "gfortran|openmpi|openblas|fftw|scalapack"</code>)</li>
+        <li>Which <code>arch/</code> template you started from</li>
+        <li>Every change you made, and <em>why</em></li>
+        <li>Errors you hit and what fixed them</li>
+        <li>The validation energy from test 3</li>
+      </ul>
+  </li>
+</ol>
+
+<div class="tip">
+<strong>Write the notes during the session, not after.</strong> You will not
+remember the third error by the time you fix the sixth. This document is
+what turns a two-hour struggle into fifteen minutes for the next person —
+and it is the content that will eventually replace this page.
+</div>
+
+<h2>7. After the build</h2>
+
+<p>Go straight to <a href="../03_vasp_inputs/">module 03</a> and learn what
+the four input files actually are. You will have just run a calculation
+without understanding its inputs, which is fine as a build test and not fine
+as a way of working.</p>
+
+<div class="check">
+<h3>Before moving on</h3>
+<ul>
+  <li><code>vasp_std</code> exists, is arm64, and is executable.</li>
+  <li>It runs on multiple cores as one job, confirmed in the OUTCAR.</li>
+  <li>The silicon test energy is about &minus;5.4 eV/atom.</li>
+  <li><code>makefile.include</code> and <code>BUILD_NOTES.md</code> are committed.</li>
+  <li>I have an alias or environment variable so I do not type the full path.</li>
+  <li>I could explain to someone else what MPI, BLAS, and FFTW each do here.</li>
+</ul>
+</div>
+
+<div class="nav" style="margin-top:2.5em;border-top:1px solid #eee;border-bottom:none;padding-top:.8em">
+<a href="../">&larr; Tutorial index</a> &nbsp;|&nbsp;
+Prev: <a href="../01_toolchain/">&larr; 01_toolchain</a> &nbsp;|&nbsp;
+Next: <a href="../03_vasp_inputs/">03_vasp_inputs &rarr;</a></div>
+
+</body>
+</html>

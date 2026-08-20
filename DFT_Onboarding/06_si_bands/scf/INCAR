@@ -1,0 +1,33 @@
+# Si band-structure SCF (step 1/2)
+# Goal: converge charge density and save CHGCAR for the nSCF line-mode run
+SYSTEM = Si SCF for bands
+
+# Accuracy
+PREC   = Accurate
+ENCUT  = 450            # <-- YOUR converged value from module 04
+                        #     MUST be identical in scf/ and nscf/
+LREAL  = .FALSE.
+LASPH  = .TRUE.
+
+# Electronic
+EDIFF  = 1E-6
+NELM   = 80
+ALGO   = Normal
+ISPIN  = 1
+
+# Smearing
+ISMEAR = 0
+SIGMA  = 0.05
+
+# Static (no ionic motion)
+NSW    = 0
+IBRION = -1
+
+# Parallel
+KPAR  = 2
+NCORE = 4
+
+# I/O  -- save charge & wfn for the bands step
+LCHARG = .TRUE.
+LWAVE  = .TRUE.
+LORBIT = 11

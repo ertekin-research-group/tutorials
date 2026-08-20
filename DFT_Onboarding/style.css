@@ -1,0 +1,46 @@
+/* Ertekin Group tutorials -- shared stylesheet */
+body { font-family: -apple-system, "Helvetica Neue", sans-serif;
+       max-width: 980px; margin: 2em auto; padding: 0 1.5em;
+       line-height: 1.55; color: #222; }
+h1 { border-bottom: 3px solid #1f4e79; padding-bottom: .3em; }
+h2 { border-bottom: 1px solid #ccc; padding-bottom: .2em; margin-top: 2em; color: #1f4e79; }
+h3 { margin-top: 1.5em; color: #444; }
+code, pre { font-family: "SF Mono", Menlo, Consolas, monospace; }
+code { background: #f3f3f3; padding: 1px 5px; border-radius: 3px; font-size: 0.92em; }
+pre { background: #1e1e1e; color: #e8e8e8; padding: 12px 16px;
+      border-radius: 6px; overflow-x: auto; font-size: 0.88em; }
+table { border-collapse: collapse; margin: 1em 0; width: 100%; }
+th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+th { background: #f0f4fa; }
+.warning { background: #ffe6e6; border-left: 5px solid #c0392b;
+           padding: 0.6em 1em; margin: 1em 0; }
+.tip { background: #e6f4ea; border-left: 5px solid #2e7d32;
+       padding: 0.6em 1em; margin: 1em 0; }
+.why  { background: #fff8e1; border-left: 5px solid #f39c12;
+        padding: 0.6em 1em; margin: 1em 0; }
+.toc { background: #f7f7f7; padding: 1em 1.5em; border-radius: 6px; }
+.small { font-size: 0.85em; color: #666; }
+kbd { background: #eee; border: 1px solid #aaa; border-radius: 3px;
+      padding: 1px 5px; font-size: 0.85em; }
+
+/* --- additions for the module series --- */
+.nav { font-size: 0.85em; color: #666; margin-bottom: 1.5em;
+       padding-bottom: .8em; border-bottom: 1px solid #eee; }
+.nav a { color: #1f4e79; text-decoration: none; }
+.nav a:hover { text-decoration: underline; }
+.week { display: inline-block; background: #1f4e79; color: #fff;
+        padding: 2px 10px; border-radius: 12px; font-size: 0.78em;
+        font-weight: 600; letter-spacing: .03em; vertical-align: middle; }
+.goal { background: #eef3fa; border-left: 5px solid #1f4e79;
+        padding: 0.8em 1.2em; margin: 1.2em 0; }
+.goal strong { color: #1f4e79; }
+.check { background: #f7f7f7; border: 1px solid #ddd; border-radius: 6px;
+         padding: 1em 1.5em; margin: 1.5em 0; }
+.check h3 { margin-top: 0; }
+.check ul { list-style: none; padding-left: 0; }
+.check li::before { content: "\2610  "; font-size: 1.1em; color: #1f4e79; }
+.check li { margin: .35em 0; }
+.modtable td:first-child { font-family: "SF Mono", Menlo, monospace;
+                           font-size: 0.88em; white-space: nowrap; }
+.done { background: #e6f4ea; border-left: 5px solid #2e7d32;
+        padding: 0.8em 1.2em; margin: 1.2em 0; }
