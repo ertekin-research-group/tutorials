@@ -1,14 +1,11 @@
 <!--
   Build record: one real conda-only VASP build on Apple Silicon, August 2026.
-  Kept verbatim, including the errors and the dead ends.
-
-  Contributed by a student working through module 02. Attribution available
-  on request -- see CONTRIBUTORS.md.
+  Written by Alexander Jakopin. Kept verbatim, including the dead ends.
 -->
 
-> **A real build record.** One student's account of building VASP 6.4.3 from a
-> pure conda-forge toolchain on Apple Silicon, written while doing it in
-> August 2026. Kept as-is, errors and all.
+> **A real build record.** Written by **Alexander Jakopin** in August 2026,
+> while working through module 02 — VASP 6.4.3 from a pure conda-forge
+> toolchain on Apple Silicon. Kept as-is, errors and all.
 >
 > Treat it as evidence that this works, and as a guide to the *kinds* of thing
 > that go wrong — not as a script to follow. Package versions move and your

@@ -1,26 +1,30 @@
 # Contributors
 
-These tutorials are group teaching material. They are written to be
-person-agnostic and to outlive any particular student's time in the group, so
-worked examples use placeholder names and the build records are anonymous by
-default.
+These tutorials are group teaching material, written to be person-agnostic so
+they outlive any one student's time in the group — worked examples use
+placeholder names. That applies to the *examples*, not to the people who built
+this. Contributions are real work and are credited here.
 
-That is a default, not a policy. **If you contributed something here and would
-like your name on it, say so and it goes on this list** — contributions are
-real work and there is no reason they should be invisible.
+If you contributed and are not listed, or are listed and would rather not be,
+say so and it changes.
 
-## Named contributors
+## Contributors
 
-*(none listed yet)*
+**Jaejun Lee** — wrote the original silicon VASP tutorial for the group's
+campus cluster: the four-input-file walkthrough, the INCAR tag reference, and
+the relax → SCF → non-SCF → band-structure workflow. Modules 00, 03, 05 and 06
+are adapted from that work, and the `prep_bands.py` / `plot_bands.py` scripts
+are substantially his.
 
-## Contributions held anonymously
-
-- `DFT_Onboarding/02_vasp_build_mac/BUILD_NOTES_2026-08_M5Pro.md` — build
-  record, August 2026, contributed by a student working through module 02.
-  Attribution available on request.
+**Alexander Jakopin** — first student through the restructured series, in
+Fall 2026. Contributed the conda-only Apple Silicon build record
+(`DFT_Onboarding/02_vasp_build_mac/BUILD_NOTES_2026-08_M5Pro.md`), and found
+seven errors in the modules by hitting every one of them in practice —
+including the k-point density conventions being conflated in module 04, and
+`check_setup.py` hard-coding the wrong POTCAR set.
 
 ## Reporting problems
 
 If instructions here are wrong or incomplete on your machine, fix them and
 open a PR. The corrections a newcomer finds are exactly the ones the author
-could not see — several of the fixes already in this repo came in that way.
+cannot see — most of the fixes in this repo arrived that way.
