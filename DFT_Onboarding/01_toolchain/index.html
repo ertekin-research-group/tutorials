@@ -228,7 +228,8 @@ competing phases that set chemical potential limits.</p>
       <pre>export MP_API_KEY="your_key_here"</pre>
       then <code>source ~/.zshrc</code>.</li>
   <li>Also register it with pymatgen, which looks for its own setting name:
-      <pre>pmg config --add PMG_MAPI_KEY "your_key_here"</pre>
+      <pre>mkdir -p ~/.config      # pmg fails if this does not already exist
+pmg config --add PMG_MAPI_KEY "your_key_here"</pre>
       This writes to <code>~/.config/.pmgrc.yaml</code>.</li>
 </ol>
 
@@ -265,7 +266,16 @@ and outside any Git repository, for example <code>~/vasp_pseudo/</code>.</p>
 concatenated in POSCAR order:</p>
 
 <pre>cp ~/vasp_pseudo/Si/POTCAR POTCAR                      # one element
-cat ~/vasp_pseudo/Ga/POTCAR ~/vasp_pseudo/N/POTCAR &gt; POTCAR   # two, IN ORDER</pre>
+
+rm -f POTCAR                                          # then, for two elements:
+cat ~/vasp_pseudo/Ga/POTCAR ~/vasp_pseudo/N/POTCAR &gt; POTCAR   # IN ORDER</pre>
+
+<div class="tip">
+Library POTCARs are read-only and <code>cp</code> preserves that, so
+<code>cat ... &gt; POTCAR</code> fails with <code>permission denied</code> if
+one is already there. <code>rm -f POTCAR</code> first and the problem
+disappears.
+</div>
 
 <p><strong>Through pymatgen.</strong> pymatgen can generate POTCARs
 automatically, but it expects the library in a specific directory layout

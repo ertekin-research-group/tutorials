@@ -82,9 +82,19 @@ from pymatgen.io.vasp import Poscar
 import os
 
 with MPRester(os.environ["MP_API_KEY"]) as m:
-    s = m.get_structure_by_material_id("mp-149")   # mp-149 = Si
+    s = m.get_structure_by_material_id("mp-149",
+                                       conventional_unit_cell=True)
 
 Poscar(s).write_file("POSCAR")</pre>
+
+<div class="warning">
+<strong><code>conventional_unit_cell=True</code> is not optional here.</strong>
+Without it the Materials Project hands back the <em>primitive</em> cell — 2
+atoms for silicon, not 8 — and everything downstream silently refers to a
+different cell than this page describes. Energies are reported per cell, so
+if you then divide by the wrong atom count your energy per atom is out by a
+factor of four and nothing warns you.
+</div>
 
 <h3>Anatomy</h3>
 
@@ -141,7 +151,16 @@ in POSCAR order:</p>
 cp ~/vasp_pseudo/Si/POTCAR POTCAR
 
 # two elements -- ORDER MUST MATCH POSCAR LINE 6
+rm -f POTCAR      # see below
 cat ~/vasp_pseudo/Ga/POTCAR ~/vasp_pseudo/N/POTCAR &gt; POTCAR</pre>
+
+<div class="tip">
+<strong>Why the <code>rm -f</code> first.</strong> POTCARs in the library are
+read-only, and <code>cp</code> preserves that. So if a POTCAR is already
+sitting in the directory, <code>cat ... &gt; POTCAR</code> fails with
+<code>permission denied</code> — the shell cannot open the existing
+read-only file for writing. Removing it first sidesteps the whole issue.
+</div>
 
 <h3>Choosing a variant</h3>
 
@@ -308,19 +327,40 @@ Without it activated, you will get a cryptic "library not found" error.
 
 <h3>How many cores?</h3>
 
-<p>Check what you have:</p>
+<p>Apple Silicon splits its CPU into tiers, and the naming has changed
+across generations, so ask the machine rather than assuming:</p>
 
-<pre>sysctl -n hw.perflevel0.physicalcpu    # performance cores
-sysctl -n hw.ncpu                      # total, including efficiency cores</pre>
+<pre>sysctl -n hw.ncpu                      # total cores
+sysctl -n hw.perflevel0.physicalcpu    # cores in the fastest tier
+sysctl -n hw.perflevel1.physicalcpu    # cores in the second tier (may not exist)</pre>
 
-<p>Use the <strong>performance cores</strong>, and leave one or two free so
-your laptop stays usable. On a machine with 10 performance cores,
-<code>-np 8</code> is a sensible default.</p>
+<p><code>perflevel0</code> is always the fastest tier. On older M-series
+chips the second tier is genuinely slow "efficiency" cores you should avoid.
+On newer ones the second tier is much closer in speed to the first, and may
+be worth using. The safe default either way:</p>
+
+<ul>
+  <li><strong>Start with <code>-np</code> equal to your
+      <code>perflevel0</code> count</strong>, minus one or two so the laptop
+      stays usable.</li>
+  <li>If a second tier exists, <strong>time a short run both ways</strong>
+      before trusting it. Adding ranks is only a win if the extra cores keep
+      up.</li>
+</ul>
 
 <div class="tip">
-Do not use the efficiency cores. MPI splits work evenly across ranks, so
-every rank waits for the slowest — putting ranks on slow cores drags the
-whole calculation down to their speed. More ranks is not always faster.
+<strong>Benchmark, do not guess.</strong> Take one of your convergence runs
+from module 04, run it at a few different <code>-np</code> values, and record
+the wall times. Ten minutes of measurement beats a rule of thumb that was
+written for a different chip — and you will want the timings for your
+methods section anyway.
+</div>
+
+<div class="tip">
+<strong>More ranks is not always faster.</strong> MPI splits work evenly
+across ranks, so every rank waits for the slowest one. Putting ranks on
+slower cores drags the whole calculation down to their speed — which is why
+a mixed-tier run can be slower than using the fast tier alone.
 </div>
 
 <h3>KPAR and NCORE</h3>
@@ -333,9 +373,24 @@ whole calculation down to their speed. More ranks is not always faster.
     <td>2 or 4. Larger helps for big cells, hurts for small ones.</td></tr>
 </table>
 
-<p>Constraint: <code>KPAR</code> must divide the total rank count. With
-<code>-np 8</code> and <code>KPAR = 2</code>, each k-point group gets 4
-ranks, so <code>NCORE</code> must divide 4.</p>
+<p>Constraint: <code>KPAR</code> must divide the total rank count, and
+<code>NCORE</code> must divide what is left in each group. Work it out as
+<em>ranks per group</em> = <code>-np</code> &divide; <code>KPAR</code>, then
+pick an <code>NCORE</code> that divides that:</p>
+
+<table>
+<tr><th><code>-np</code></th><th><code>KPAR</code></th><th>Ranks per group</th><th>Valid <code>NCORE</code></th></tr>
+<tr><td>4</td><td>2</td><td>2</td><td>1, 2</td></tr>
+<tr><td>6</td><td>2</td><td>3</td><td>1, <strong>3</strong></td></tr>
+<tr><td>8</td><td>2</td><td>4</td><td>1, 2, 4</td></tr>
+<tr><td>8</td><td>4</td><td>2</td><td>1, 2</td></tr>
+<tr><td>12</td><td>2</td><td>6</td><td>1, 2, 3, 6</td></tr>
+<tr><td>16</td><td>4</td><td>4</td><td>1, 2, 4</td></tr>
+</table>
+
+<p>So on 6 cores with <code>KPAR = 2</code>, <code>NCORE = 3</code> is the
+right answer — 2 does not divide 3. Get this wrong and VASP will either
+complain or quietly reduce <code>NCORE</code> for you.</p>
 
 <div class="tip">
 Do not spend time optimizing this now. <code>KPAR=2</code>,

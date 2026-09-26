@@ -84,11 +84,30 @@ def _potcar_path():
     return psp
 
 
+# pymatgen names each POTCAR set after the release it came from. The group
+# library is currently potpaw_PBE.64 -> "PBE_64", but older sets are still in
+# circulation, so try the plausible ones rather than hard-coding one and
+# failing on a library that is perfectly fine.
+POTCAR_FUNCTIONALS = ["PBE_64", "PBE_54", "PBE_52", "PBE"]
+
+
 def _potcar_generate():
     from pymatgen.io.vasp.inputs import Potcar
-    pot = Potcar(["Si"], functional="PBE_54")
-    enmax = pot[0].keywords.get("ENMAX")
-    return f"generated Si POTCAR, ENMAX = {enmax} eV"
+    errors = []
+    for functional in POTCAR_FUNCTIONALS:
+        try:
+            pot = Potcar(["Si"], functional=functional)
+        except Exception as exc:                      # noqa: BLE001
+            errors.append(f"{functional}: {type(exc).__name__}")
+            continue
+        enmax = pot[0].keywords.get("ENMAX")
+        return (f"generated Si POTCAR with functional={functional}, "
+                f"ENMAX = {enmax} eV")
+    raise RuntimeError(
+        "could not generate a POTCAR with any known functional set. "
+        "Check that PMG_VASP_PSP_DIR points at a directory produced by "
+        "`pmg config -p`, and note which set you were given "
+        f"(tried: {'; '.join(errors)})")
 
 
 # ------------------------------------------------- Materials Project key

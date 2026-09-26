@@ -35,6 +35,19 @@ parallel on your laptop, built entirely from conda-forge packages. Plus
 notes good enough that the next student has a real starting point.
 </div>
 
+<div class="done">
+<strong>This has been done, successfully, on this toolchain.</strong> A
+previous student built <code>vasp_std</code>, <code>vasp_gam</code> and
+<code>vasp_ncl</code> from a pure conda-forge toolchain on Apple Silicon and
+wrote down exactly what it took:
+<a href="BUILD_NOTES_2026-08_M5Pro.md"><code>BUILD_NOTES_2026-08_M5Pro.md</code></a>.
+<br><br>
+Read it <em>after</em> your first failure, not before. It is a record of one
+machine at one moment, not a recipe — package versions move and your errors
+will differ. But when the first compile dies and it feels like a dead end,
+it is worth knowing that the path exists and what the far side looked like.
+</div>
+
 <h2>1. Why this is harder than installing a normal package</h2>
 
 <p>You have spent module 01 installing things with <code>conda install</code>.
@@ -281,8 +294,10 @@ alias vasp8="mpirun -np 8 $VASP_STD"</pre>
 <div class="tip">
 <strong>Write the notes during the session, not after.</strong> You will not
 remember the third error by the time you fix the sixth. This document is
-what turns a two-hour struggle into fifteen minutes for the next person —
-and it is the content that will eventually replace this page.
+what turns a two-hour struggle into fifteen minutes for the next person.
+<br><br>
+That is not hypothetical: the build record linked at the top of this page was
+written exactly this way, by the student before you. Yours joins it.
 </div>
 
 <h2>7. After the build</h2>
