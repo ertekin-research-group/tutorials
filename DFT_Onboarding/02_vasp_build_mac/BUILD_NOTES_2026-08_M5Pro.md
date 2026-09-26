@@ -1,15 +1,18 @@
 <!--
-  Build record contributed by a student, August 2026.
-  Kept verbatim. This is a record of one real build on one real machine,
-  not a recipe -- your machine and package versions will differ.
+  Build record: one real conda-only VASP build on Apple Silicon, August 2026.
+  Kept verbatim, including the errors and the dead ends.
+
+  Contributed by a student working through module 02. Attribution available
+  on request -- see CONTRIBUTORS.md.
 -->
 
-> **A real build record.** Written by **a student** in August 2026
-> while working through this module, on an Apple M5 Pro. Kept as-is.
+> **A real build record.** One student's account of building VASP 6.4.3 from a
+> pure conda-forge toolchain on Apple Silicon, written while doing it in
+> August 2026. Kept as-is, errors and all.
 >
-> Treat it as evidence that this is possible and as a guide to the *kinds*
-> of thing that go wrong — not as a script to follow. Package versions move
-> and your errors will not be identical.
+> Treat it as evidence that this works, and as a guide to the *kinds* of thing
+> that go wrong — not as a script to follow. Package versions move and your
+> errors will not be identical.
 
 # VASP 6.4.3 build notes — Apple Silicon (macOS), conda-only toolchain
 
