@@ -210,12 +210,42 @@ re-converge for it. What transfers is the method, not the number.
 <h3>A useful way to report k-point density</h3>
 
 <p>Because the right mesh depends on the cell, "9&times;9&times;9" is not
-portable between systems. What is portable is the product of the mesh
-subdivision and the lattice vector length — often quoted as
-<em>k-point spacing</em> in &Aring;<sup>&minus;1</sup>, or as
-"<em>n</em>&nbsp;&times;&nbsp;<em>a</em>&nbsp;&asymp;&nbsp;30&nbsp;&Aring;".
-Compute this for your converged silicon mesh; it gives you a starting guess
-for GaN in Week 6 instead of starting from scratch.</p>
+portable between systems. What <em>is</em> portable is a measure of how
+finely reciprocal space is actually sampled, and there are two conventions
+for it. They carry the same information but are not the same quantity, so do
+not mix them up:</p>
+
+<table>
+<tr><th>Quantity</th><th>Definition</th><th>Units</th><th>Denser sampling means</th></tr>
+<tr><td><em>n</em>&nbsp;&times;&nbsp;<em>a</em></td>
+    <td>Mesh subdivisions along a direction, times the real-space lattice
+        parameter along it.</td>
+    <td><strong>&Aring;</strong></td>
+    <td>larger</td></tr>
+<tr><td>&Delta;<em>k</em></td>
+    <td>The actual spacing between adjacent k-points in reciprocal space:
+        &Delta;<em>k</em> = 2&pi;&nbsp;/&nbsp;(<em>n</em>&nbsp;<em>a</em>).</td>
+    <td><strong>&Aring;<sup>&minus;1</sup></strong></td>
+    <td>smaller</td></tr>
+</table>
+
+<p>They are reciprocals of one another, up to the factor of 2&pi;. A common
+rule of thumb for semiconductors is
+<em>n</em>&nbsp;&times;&nbsp;<em>a</em>&nbsp;&asymp;&nbsp;30&nbsp;&Aring;;
+metals need denser sampling than that.</p>
+
+<div class="tip">
+VASP uses the &Delta;<em>k</em> convention in its <code>KSPACING</code> tag,
+which defaults to 0.5&nbsp;&Aring;<sup>&minus;1</sup>. Worth knowing, because
+<strong>if no <code>KPOINTS</code> file is present VASP falls back to
+<code>KSPACING</code> and runs anyway</strong> — no error, no warning, and a
+mesh you did not choose. Always check that your <code>KPOINTS</code> file is
+actually there.
+</div>
+
+<p>Compute both numbers for your converged silicon mesh. They give you a
+starting guess for GaN in Week 6 rather than starting from scratch — though
+you will still converge it properly rather than trusting the guess.</p>
 
 <h2 id="differences">5. Part C — differences converge faster than absolutes</h2>
 
