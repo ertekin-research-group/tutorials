@@ -15,8 +15,7 @@ LREAL  = .FALSE.
 LASPH  = .TRUE.
 
 # --- electronic ---
-EDIFF  = 1E-7          # tighter than usual: we are chasing meV differences,
-                       # so SCF noise must be well below the effect we study
+EDIFF  = 1E-6          # SCF noise well below the meV-scale effect we study
 NELM   = 100
 ALGO   = Normal
 ISPIN  = 1
@@ -29,9 +28,6 @@ SIGMA  = 0.05
 NSW    = 0
 IBRION = -1
 
-# --- parallel ---
-KPAR   = 2
-NCORE  = 2
 
 # --- I/O: write nothing large, we are running many of these ---
 LWAVE  = .FALSE.

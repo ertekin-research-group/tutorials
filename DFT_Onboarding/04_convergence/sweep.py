@@ -32,6 +32,8 @@ import vasp_tools as vt
 # range was adequate; if the curve is still sloping at the last point, it
 # was not.
 # --------------------------------------------------------------------------
+TOL_MEV = 10.0          # convergence tolerance, meV/atom (= 0.01 eV/atom)
+
 DEFAULT_ENCUT = [250, 300, 350, 400, 450, 500, 550, 600]
 DEFAULT_NK = [3, 5, 7, 9, 11, 13]
 
@@ -55,7 +57,8 @@ def sweep(kind: str, values: list[int], other: int) -> Path:
     print(f"  cell: {nat} atoms")
     print(f"  running on {vt.NPROC} cores\n")
 
-    header = f"{'value':>8}  {'E (eV)':>16}  {'E/atom (eV)':>14}  {'wall (s)':>9}"
+    header = (f"{'value':>8}  {'mesh':>10}  {'E (eV)':>16}  "
+              f"{'E/atom (eV)':>14}  {'wall (s)':>9}")
     print(header)
     print("-" * len(header))
 
@@ -65,10 +68,13 @@ def sweep(kind: str, values: list[int], other: int) -> Path:
         else:
             encut, nk = other, v
 
+        n1, n2, n3 = vt.kmesh_for(nk)
         workdir = Path(f"{kind}_{v:04d}")
         vt.prepare(workdir,
                    incar_tpl.replace("{ENCUT}", str(encut)),
-                   kpts_tpl.replace("{NK}", str(nk)))
+                   (kpts_tpl.replace("{NK1}", str(n1))
+                            .replace("{NK2}", str(n2))
+                            .replace("{NK3}", str(n3))))
 
         try:
             with vt.Timer() as t:
@@ -80,13 +86,14 @@ def sweep(kind: str, values: list[int], other: int) -> Path:
         rows.append({"value": v,
                      "encut": encut,
                      "nk": nk,
+                     "mesh": f"{n1}x{n2}x{n3}",
                      "natoms": nat,
                      "energy_eV": energy,
                      "energy_per_atom_eV": energy / nat,
                      "wall_s": round(t.elapsed, 1)})
 
-        print(f"{v:>8}  {energy:>16.6f}  {energy / nat:>14.6f}  "
-              f"{t.elapsed:>9.1f}")
+        print(f"{v:>8}  {f'{n1}x{n2}x{n3}':>10}  {energy:>16.6f}  "
+              f"{energy / nat:>14.6f}  {t.elapsed:>9.1f}")
 
     if not rows:
         print("\nNo calculations succeeded. Read a run.log before continuing.")
@@ -115,10 +122,11 @@ def _report(rows: list[dict], kind: str) -> None:
 
     for r in rows:
         d_meV = (r["energy_per_atom_eV"] - ref) * 1000.0
-        flag = "yes" if abs(d_meV) < 1.0 else ""
+        flag = "yes" if abs(d_meV) < TOL_MEV else ""
         print(f"{r['value']:>20}  {d_meV:>15.3f}  {flag:>12}")
 
-    print("\n'converged?' marks |dE| < 1 meV/atom against the reference.")
+    print(f"\n'converged?' marks |dE| < {TOL_MEV:g} meV/atom "
+          f"({TOL_MEV / 1000:g} eV/atom) against the reference.")
     print("Choose the SMALLEST value that is converged -- larger is not")
     print("better, it is just slower, and you will run thousands of these.")
 
@@ -141,8 +149,22 @@ def main() -> None:
 
     vt.check_setup()
 
+    enmax = vt.potcar_enmax()
+    print(f"\nLargest ENMAX in POTCAR: {enmax:.1f} eV")
+    print("This is the floor. Values below it are not meaningful -- the")
+    print("pseudopotential itself says so.")
+
     if args.kind == "encut":
         values = args.values or DEFAULT_ENCUT
+        below = [v for v in values if v < enmax]
+        if below:
+            print(f"\nNOTE: {len(below)} requested value(s) are below ENMAX "
+                  f"and will be skipped: {below}")
+            values = [v for v in values if v >= enmax]
+            if not values:
+                sys.exit(f"Nothing left to sweep. Try values above "
+                         f"{enmax:.0f} eV (1.3x ENMAX ~ {1.3 * enmax:.0f} eV "
+                         f"is a sensible starting point).")
         sweep("encut", values, args.nk)
     else:
         values = args.values or DEFAULT_NK

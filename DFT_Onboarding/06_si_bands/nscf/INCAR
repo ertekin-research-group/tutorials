@@ -25,8 +25,6 @@ NSW    = 0
 IBRION = -1
 
 # Parallel
-KPAR  = 2
-NCORE = 4
 
 # I/O
 LWAVE  = .FALSE.

@@ -228,9 +228,6 @@ SIGMA  = 0.05           # smearing width, eV
 NSW    = 0              # 0 = static, no ionic steps
 IBRION = -1             # no ion mover
 
-# --- parallelization (see section 6) ---
-KPAR   = 2
-NCORE  = 4
 
 # --- what to write ---
 LWAVE  = .FALSE.        # do not save WAVECAR (large)
@@ -306,6 +303,11 @@ k-points. This is why a 96-atom defect supercell can often be run with a
 <strong>Use <code>Gamma</code>, not <code>Monkhorst</code>,</strong> for
 hexagonal cells like GaN and AlN. A shifted mesh breaks the hexagonal
 symmetry and can give subtly wrong answers. Gamma-centered is always safe.
+<br><br>
+Also note that hexagonal cells want a <em>non-cubic</em> mesh. A long
+real-space axis gives a short reciprocal axis, which needs fewer divisions
+&mdash; for wurtzite GaN, 7&times;7&times;4 rather than 7&times;7&times;7.
+Module 04 covers how to size this.
 </div>
 
 <h3>Line mode, for band structures</h3>
@@ -393,10 +395,14 @@ right answer — 2 does not divide 3. Get this wrong and VASP will either
 complain or quietly reduce <code>NCORE</code> for you.</p>
 
 <div class="tip">
-Do not spend time optimizing this now. <code>KPAR=2</code>,
-<code>NCORE=2</code> with <code>-np 8</code> is fine for everything in
-modules 04&ndash;06. Parallel tuning matters in Week 12 on the cluster,
-where the calculations are large enough to justify the effort.
+<strong>For everything in modules 04&ndash;06, leave both tags out.</strong>
+VASP's defaults are fine for cells this small, and <code>NCORE &gt; 1</code>
+can actually be slower &mdash; it splits the work on a single orbital across
+ranks, which costs communication and only pays off for large systems.
+<code>KPAR</code>, which splits across k-points, is the useful knob when you
+have many of them, and k-point parallelism is close to perfectly efficient.
+We will tune these properly in module 07, where the calculations are big
+enough for it to matter.
 </div>
 
 <h2 id="output">7. Reading the output</h2>

@@ -70,17 +70,24 @@ calculation:</p>
 <div class="warning">
 <strong>"Converged" always means "converged with respect to something,
 to within some tolerance."</strong> It is never an absolute property of a
-calculation. A cutoff converged to 1 meV/atom for total energy may be
+calculation. A cutoff converged to 10 meV/atom for total energy may be
 badly unconverged for a stress tensor or a phonon frequency. When you write
 down a converged value, write down the quantity and the tolerance too.
 </div>
 
 <h3>The tolerance we will use</h3>
 
-<p><strong>1 meV/atom</strong> for total energy. That is a reasonable
-default for the work we do: defect formation energies are typically
-0.5&ndash;5 eV, so 1 meV/atom of numerical noise is comfortably below
-anything we care about physically.</p>
+<p><strong>10 meV/atom</strong> — that is 0.01 eV/atom — for total
+energy. Once the total energy of a cell is settled to that level, the
+quantities you actually report (lattice constants, formation enthalpies,
+defect formation energies) are already comfortably converged, because every
+one of them is a <em>difference</em>, and differences converge faster than
+the absolute energies they are built from. You will demonstrate that
+yourself in Part C.</p>
+
+<p>Chasing a tighter tolerance than this on an absolute total energy is a
+good way to spend several times the compute for no change in any number you
+will ever write down.</p>
 
 <h3>The reference problem</h3>
 
@@ -91,10 +98,13 @@ watch the differences shrink. This works, but has a trap:</p>
 <div class="warning">
 <strong>If only your largest value looks "converged", nothing is
 converged.</strong> Your reference deviates from itself by exactly zero, so
-it always looks perfect. The signal you want is a <em>plateau</em>: several
-consecutive values agreeing with each other. If the energy is still
-drifting in one direction at the top of your range, extend the range. The
-scripts here check for this and will tell you.
+it always looks perfect. The signal you want is a <em>plateau</em>.
+<br><br>
+The way to read it: draw a band of &plusmn;tolerance around the reference,
+and find the smallest setting beyond which <em>every</em> point stays inside
+that band. Not the first point that dips in — a single value can wander
+inside and back out again, and that is not convergence. The plotting script
+draws the band and applies exactly this test.
 </div>
 
 <h2 id="setup">2. Setup</h2>
@@ -141,7 +151,13 @@ plumbing once before it disappears behind an API.
 <pre>grep ENMAX POTCAR</pre>
 
 <p>For silicon that is about 245 eV. That is a <em>floor</em>, not a
-converged value — a common misreading. Now sweep well past it:</p>
+converged value — a common misreading. Values below it are not merely
+unconverged, they are meaningless: the pseudopotential itself states it
+needs more plane waves than that. <code>sweep.py</code> reads this number
+from your POTCAR and skips any requested value that falls below it.</p>
+
+<p>A sensible place to begin a sweep is around 1.3&nbsp;&times;&nbsp;ENMAX.
+Now sweep well past it:</p>
 
 <pre>python sweep.py encut</pre>
 
@@ -166,7 +182,8 @@ difference, on a log axis.
 <h3>What to conclude</h3>
 
 <ul>
-  <li>The smallest ENCUT within 1 meV/atom of the reference.</li>
+  <li>The smallest ENCUT within 10 meV/atom of the reference, and staying
+      inside that band for every larger value.</li>
   <li>How much more the converged run costs than the cheapest one.</li>
   <li>Whether the curve has genuinely plateaued, or is still sloping at
       600 eV. If it is still sloping, rerun with
@@ -205,6 +222,34 @@ large real-space cell has a small Brillouin zone, which needs fewer
 k-points to sample. Your silicon result here will <em>not</em> transfer to a
 96-atom GaN supercell — that will need a much sparser mesh, and you will
 re-converge for it. What transfers is the method, not the number.
+</div>
+
+<h3>Shaping the mesh to the cell</h3>
+
+<p>A uniform <em>n</em>&times;<em>n</em>&times;<em>n</em> mesh is only correct
+for a cubic cell. In general the three directions want different numbers of
+divisions, because <strong>a long real-space axis gives a short reciprocal
+axis, and a short reciprocal axis needs fewer k-points to sample it.</strong></p>
+
+<p>Divisions should scale with the length of the corresponding reciprocal
+lattice vector, <em>n<sub>i</sub></em> &prop;
+|<strong>b</strong><sub><em>i</em></sub>|. Wurtzite GaN has
+<em>c</em>/<em>a</em> &asymp; 1.63, so <strong>c*</strong> is only about half
+the length of <strong>a*</strong>, and 7&times;7&times;4 samples all three
+directions comparably. A 7&times;7&times;7 mesh there oversamples along
+<em>c</em> by roughly 1.6&times; — resolution you pay for and do not need.</p>
+
+<p><code>sweep.py</code> works this out from the POSCAR. You sweep a single
+number, which sets the divisions along the longest reciprocal vector; the
+other two are scaled down in proportion. For a cubic cell that returns
+<em>n</em>&times;<em>n</em>&times;<em>n</em>; for anything else it returns the
+right shape.</p>
+
+<div class="tip">
+On a four-atom cell the saving is seconds and nobody cares. On a 96-atom
+defect supercell, across every defect and every charge state, it is the
+difference between an afternoon and an evening. Build the habit while the
+stakes are low.
 </div>
 
 <h3>A useful way to report k-point density</h3>
@@ -368,7 +413,7 @@ with the lattice constant and in module 06 with the band gap.</p>
       roughly this form:
       <div class="tip" style="margin-top:.6em">
       <em>For silicon in the 8-atom conventional cell, total energy is
-      converged to within 1 meV/atom at <code>ENCUT</code> = ___ eV
+      converged to within 10 meV/atom at <code>ENCUT</code> = ___ eV
       (reference: ___ eV) and a ___&times;___&times;___ Gamma-centered mesh
       (reference: ___). Evidence: <code>encut_convergence.png</code>,
       <code>kpoints_convergence.png</code>. Energy differences between cells

@@ -32,9 +32,6 @@ ISIF   = 3              # relax ions AND cell (shape + volume)
 EDIFFG = -0.01          # negative = force criterion, eV/Angstrom
 ISYM   = 2              # use symmetry (faster; fine for a perfect crystal)
 
-# --- parallel ---
-KPAR   = 2
-NCORE  = 2
 
 # --- I/O ---
 LWAVE  = .FALSE.

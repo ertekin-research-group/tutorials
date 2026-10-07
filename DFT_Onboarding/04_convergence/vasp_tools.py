@@ -9,6 +9,7 @@ exactly how it is done.
 """
 from __future__ import annotations
 
+import math
 import os
 import re
 import shutil
@@ -153,3 +154,76 @@ class Timer:
     def __exit__(self, *exc):
         self.elapsed = time.perf_counter() - self._t0
         return False
+
+# --------------------------------------------------------------------------
+# Cell geometry and pseudopotential limits
+# --------------------------------------------------------------------------
+def potcar_enmax(potcar: Path = Path("POTCAR")) -> float:
+    """
+    Largest ENMAX in the POTCAR, in eV.
+
+    Every pseudopotential states its own minimum recommended plane-wave
+    cutoff. The largest one in a multi-element system is the floor for the
+    whole calculation: below it the numbers are not merely unconverged, they
+    are meaningless.
+    """
+    vals = []
+    for line in potcar.read_text(errors="ignore").splitlines():
+        if "ENMAX" in line:
+            # e.g.  "   ENMAX  =  400.000; ENMIN  =  300.000 eV"
+            m = re.search(r"ENMAX\s*=\s*([\d.]+)", line)
+            if m:
+                vals.append(float(m.group(1)))
+    if not vals:
+        raise VaspError(f"No ENMAX found in {potcar}")
+    return max(vals)
+
+
+def lattice_vectors(poscar: Path = Path("POSCAR")) -> list[list[float]]:
+    """The three lattice vectors from a POSCAR, scaled, in Angstrom."""
+    lines = poscar.read_text().splitlines()
+    scale = float(lines[1])
+    return [[float(x) * scale for x in lines[i].split()[:3]] for i in (2, 3, 4)]
+
+
+def reciprocal_lengths(poscar: Path = Path("POSCAR")) -> list[float]:
+    """
+    |b1|, |b2|, |b3| for the cell in `poscar`, in inverse Angstrom.
+
+    A long real-space axis gives a short reciprocal axis, which needs fewer
+    k-points. This is what makes a uniform n x n x n mesh the wrong shape for
+    anything but a cubic cell.
+    """
+    a1, a2, a3 = lattice_vectors(poscar)
+
+    def cross(u, v):
+        return [u[1] * v[2] - u[2] * v[1],
+                u[2] * v[0] - u[0] * v[2],
+                u[0] * v[1] - u[1] * v[0]]
+
+    def dot(u, v):
+        return sum(x * y for x, y in zip(u, v))
+
+    def norm(u):
+        return dot(u, u) ** 0.5
+
+    vol = abs(dot(a1, cross(a2, a3)))
+    two_pi = 2.0 * math.pi
+    return [two_pi * norm(cross(a2, a3)) / vol,
+            two_pi * norm(cross(a3, a1)) / vol,
+            two_pi * norm(cross(a1, a2)) / vol]
+
+
+def kmesh_for(n: int, poscar: Path = Path("POSCAR")) -> tuple[int, int, int]:
+    """
+    Mesh divisions shaped to the cell, with `n` along the longest reciprocal
+    vector and the others scaled down in proportion to their own lengths.
+
+    For cubic cells this returns (n, n, n). For wurtzite GaN with c/a = 1.63
+    and n = 7 it returns (7, 7, 4) -- comparable sampling in every direction
+    rather than oversampling along c.
+    """
+    b = reciprocal_lengths(poscar)
+    bmax = max(b)
+    return tuple(max(1, round(n * bi / bmax)) for bi in b)
+
